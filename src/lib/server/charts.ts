@@ -17,7 +17,12 @@ async function scan() {
 		const fields = readMaidata(body < 0 ? text : text.slice(0, body));
 		// Difficulty 7 is the Utage (宴) chart.
 		const levels = ['1', '2', '3', '4', '5', '6', '7'].flatMap((level) => fields[`lv_${level}`] ? [[level, fields[`lv_${level}`]] as [string, string]] : []);
-		return { id, title: basename(dirname(id)).replace(/^(\d+)_/, '$1 · ').replace(/_DX$/, ' [DX]'), version: utage(id) ? utageVersion : fields.version ?? '', levels };
+		const designers = [...new Set(levels.map(([level]) => fields[`des_${level}`]?.trim()).concat(fields.des?.trim()).filter((name): name is string => !!name))];
+		const bpm = Number(fields.wholebpm);
+		return {
+			id, title: basename(dirname(id)).replace(/^(\d+)_/, '$1 · ').replace(/_DX$/, ' [DX]'), version: utage(id) ? utageVersion : fields.version ?? '', levels,
+			artist: fields.artist ?? '', bpm: Number.isFinite(bpm) && bpm > 0 ? bpm : undefined, designers
+		};
 	}));
 	return songs.sort((a, b) => a.title.localeCompare(b.title, 'ja', { numeric: true }));
 }

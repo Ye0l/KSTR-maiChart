@@ -157,11 +157,48 @@
 	const levelOptions = $derived([...new Set(data.songs.flatMap((song) => song.levels.map(([, value]) => levelLabel(value))))].sort((a, b) => levelRank(a) - levelRank(b) || a.localeCompare(b)));
 	let levelFilter = $state('');
 	let versionFilter = $state('');
-	const filteredSongs = $derived(songs.flatMap((song) => {
-		if (!song.title.toLowerCase().includes(search.toLowerCase()) || (versionFilter && song.version !== versionFilter)) return [];
-		const matches = levelFilter ? song.levels.filter(([, value]) => levelLabel(value) === levelFilter) : [];
-		return levelFilter && !matches.length ? [] : [{ ...song, matches }];
-	}));
+	let slotFilter = $state('');
+	let genreFilter = $state('');
+	let kindFilter = $state<'' | 'dx' | 'sd'>('');
+	let bpmMin = $state<number | null>(null);
+	let bpmMax = $state<number | null>(null);
+	let moreFilters = $state(false);
+	type SortKey = 'title' | 'number' | 'version' | 'level' | 'bpm';
+	const sortKeys: [SortKey, string][] = [['title', '이름'], ['number', '번호'], ['version', '버전'], ['level', '레벨'], ['bpm', 'BPM']];
+	let sortKey = $state<SortKey>('title');
+	let sortDesc = $state(false);
+	const slotOptions = [['2', 'BASIC'], ['3', 'ADVANCED'], ['4', 'EXPERT'], ['5', 'MASTER'], ['6', 'Re:MASTER'], ['7', 'UTAGE']];
+	const genres = $derived([...new Set(songs.map((song) => song.genre))]);
+	const extraFilters = $derived(+!!slotFilter + +!!genreFilter + +!!kindFilter + +(bpmMin != null) + +(bpmMax != null));
+	const filtering = $derived(!!(search || levelFilter || versionFilter || extraFilters));
+	function clearFilters() {
+		search = levelFilter = versionFilter = slotFilter = genreFilter = kindFilter = '';
+		bpmMin = bpmMax = null;
+	}
+	const filteredSongs = $derived.by(() => {
+		const query = search.trim().toLowerCase();
+		const list = songs.flatMap((song) => {
+			if (query && ![song.title, song.artist, ...song.designers].some((text) => text.toLowerCase().includes(query))) return [];
+			if (versionFilter && song.version !== versionFilter) return [];
+			if (genreFilter && song.genre !== genreFilter) return [];
+			if (kindFilter && song.dx !== (kindFilter === 'dx')) return [];
+			if ((bpmMin != null && !(song.bpm! >= bpmMin)) || (bpmMax != null && !(song.bpm! <= bpmMax))) return [];
+			// Difficulty and level narrow which charts of the song count; Utage keeps its charts in slots 2/3 or 7.
+			const charts = song.levels.filter(([level, value]) => (!slotFilter || level === slotFilter || (slotFilter === '7' && isUtage(song.id))) && (!levelFilter || levelLabel(value) === levelFilter));
+			if ((slotFilter || levelFilter) && !charts.length) return [];
+			const top = Math.max(-Infinity, ...charts.map(([, value]) => parseFloat(value)).filter(Number.isFinite));
+			return [{ ...song, matches: slotFilter || levelFilter ? charts : [], top }];
+		});
+		const value = (song: (typeof list)[number]) => sortKey === 'number' ? Number(song.number ?? Infinity) : sortKey === 'version' ? versionRank(song.version)
+			: sortKey === 'level' ? song.top : sortKey === 'bpm' ? song.bpm ?? -Infinity : 0;
+		if (sortKey === 'title') return sortDesc ? list.reverse() : list;
+		// Songs missing the sorted value go last either way; ties keep the name order.
+		return list.sort((a, b) => {
+			const [x, y] = [value(a), value(b)];
+			if (!Number.isFinite(x) || !Number.isFinite(y)) return Number(!Number.isFinite(x)) - Number(!Number.isFinite(y));
+			return sortDesc ? y - x : x - y;
+		});
+	});
 	let songList: HTMLUListElement | undefined = $state();
 	// Stack order keeps SLIDE and TOUCH apart; their note colors are too close to sit side by side.
 	const densityKinds = [
@@ -230,6 +267,7 @@
 			localStorage.setItem('maichart.ticks', String(ticks));
 			localStorage.setItem('maichart.sliceCount', String(sliceCount));
 			localStorage.setItem('maichart.sliceLength', String(sliceLength));
+			localStorage.setItem('maichart.sort', JSON.stringify({ key: sortKey, desc: sortDesc }));
 		} catch {
 			// Storage may be blocked; keep the current session usable.
 		}
@@ -253,6 +291,9 @@
 			if (sliceCounts.includes(slices)) sliceCount = slices;
 			const beats = Number(localStorage.getItem('maichart.sliceLength'));
 			if (sliceLengths.some(([value]) => value === beats)) sliceLength = beats;
+			const sort = JSON.parse(localStorage.getItem('maichart.sort') ?? '{}');
+			if (sortKeys.some(([key]) => key === sort?.key)) sortKey = sort.key;
+			sortDesc = sort?.desc === true;
 		} catch {
 			// Invalid or inaccessible storage falls back to the defaults.
 		}
@@ -353,7 +394,7 @@
 				</div>
 				<label class="search">
 					<span class="icon icon-search"></span>
-					<input id="search" type="search" placeholder="곡명 또는 ID 검색" aria-label="곡 검색" autocomplete="off" bind:value={search} />
+					<input id="search" type="search" placeholder="곡명·ID·아티스트·보면 제작자" aria-label="곡 검색" autocomplete="off" bind:value={search} />
 				</label>
 				<div class="filters">
 					<select aria-label="레벨 필터" bind:value={levelFilter}>
@@ -365,23 +406,50 @@
 						{#each versions as version}<option value={version}>{version.replace(/^maimai (?=.)/, '')}</option>{/each}
 					</select>
 				</div>
-				<p class="count">
-					{filteredSongs.length === songs.length ? `전체 ${songs.length}곡` : `${filteredSongs.length} / ${songs.length}곡`}
-					{#if search || levelFilter || versionFilter}<button class="clear" onclick={() => { search = ''; levelFilter = ''; versionFilter = ''; }}>필터 해제</button>{/if}
-				</p>
+				<button id="more-filters" class="more-filters" aria-expanded={moreFilters} aria-controls="extra-filters" onclick={() => moreFilters = !moreFilters}>
+					상세 필터{extraFilters ? ` · ${extraFilters}` : ''}<span class="icon" class:icon-down={!moreFilters} class:icon-up={moreFilters}></span>
+				</button>
+				<div id="extra-filters" class="filters" hidden={!moreFilters}>
+					<select aria-label="난이도 필터" bind:value={slotFilter}>
+						<option value="">난이도 전체</option>
+						{#each slotOptions as [slot, label]}<option value={slot}>{label}</option>{/each}
+					</select>
+					<select aria-label="장르 필터" bind:value={genreFilter}>
+						<option value="">장르 전체</option>
+						{#each genres as genre}<option value={genre}>{genre}</option>{/each}
+					</select>
+					<select aria-label="채보 종류 필터" bind:value={kindFilter}>
+						<option value="">DX·스탠다드</option>
+						<option value="dx">DX만</option>
+						<option value="sd">스탠다드만</option>
+					</select>
+					<div class="bpm-range">
+						<input type="number" inputmode="numeric" min="0" placeholder="BPM" aria-label="최소 BPM" bind:value={bpmMin} />
+						<span>~</span>
+						<input type="number" inputmode="numeric" min="0" placeholder="BPM" aria-label="최대 BPM" bind:value={bpmMax} />
+					</div>
+				</div>
+				<div class="count">
+					<span>{filteredSongs.length === songs.length ? `전체 ${songs.length}곡` : `${filteredSongs.length} / ${songs.length}곡`}</span>
+					{#if filtering}<button class="clear" onclick={clearFilters}>필터 해제</button>{/if}
+					<label class="sort"><span class="sr-only">정렬</span>
+						<select id="sort-key" aria-label="정렬 기준" bind:value={sortKey}>{#each sortKeys as [key, label]}<option value={key}>{label}순</option>{/each}</select>
+					</label>
+					<button id="sort-direction" class="sort-direction" title={sortDesc ? '내림차순' : '오름차순'} aria-label={sortDesc ? '내림차순' : '오름차순'} onclick={() => sortDesc = !sortDesc}>{sortDesc ? '↓' : '↑'}</button>
+				</div>
 				<ul class="songs" bind:this={songList} aria-label="차트 목록" data-sveltekit-preload-data="tap" data-sveltekit-noscroll>
 					{#each filteredSongs as song (song.id)}
 						<li>
 							<a href={`?chart=${encodeURIComponent(song.id)}`} aria-current={song.id === data.selected ? 'page' : undefined} onclick={() => { if (song.matches.length) difficulty = song.matches.at(-1)![0]; }}>
 								<span class="song-name">{song.name}</span>
-								<span class="song-meta">{#if song.dx}<b class="dx">DX</b>{/if}{song.number ? `${song.number} · ` : ''}{song.genre}</span>
+								<span class="song-meta">{#if song.dx}<b class="dx">DX</b>{/if}{song.number ? `${song.number} · ` : ''}{song.genre}{#if sortKey === 'bpm' && song.bpm} · BPM {song.bpm}{/if}{#if sortKey === 'version'} · {song.version.replace(/^maimai (?=.)/, '')}{/if}</span>
 								{#if song.matches.length}
 									<span class="song-levels">{#each song.matches as [level, value]}<b style:--difficulty={difficultyColor(level, isUtage(song.id))}>{difficultyName(level, isUtage(song.id), song.levels.map(([slot]) => slot))} {value}</b>{/each}</span>
 								{/if}
 							</a>
 						</li>
 					{:else}
-						<li class="empty-search">“{search}”에 맞는 곡이 없습니다.</li>
+						<li class="empty-search">{search ? `“${search}”에 맞는 곡이 없습니다.` : '조건에 맞는 곡이 없습니다.'}</li>
 					{/each}
 				</ul>
 			</div>
@@ -693,7 +761,15 @@
 	.search input::placeholder { color: var(--text-3); }
 	.filters { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 	.filters select { width: 100%; }
-	.count { display: flex; align-items: center; justify-content: space-between; min-height: 24px; margin: 0; color: var(--text-3); font-size: 12px; }
+	.count { display: flex; align-items: center; gap: 6px; min-height: 30px; margin: 0; color: var(--text-3); font-size: 12px; }
+	.count > span { margin-right: auto; }
+	.sort select { min-height: 30px; padding-block: 0; font-size: 12px; }
+	.sort-direction { width: 30px; min-height: 30px; padding: 0; font-size: 14px; }
+	.more-filters { display: flex; align-items: center; justify-content: center; gap: 4px; min-height: 30px; padding: 0 8px; border-color: transparent; background: transparent; color: var(--text-2); font-size: 12px; }
+	.more-filters .icon { width: 14px; height: 14px; }
+	.more-filters[aria-expanded='true'] { color: var(--text); }
+	.bpm-range { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 4px; color: var(--text-3); }
+	.bpm-range input { width: 100%; min-width: 0; min-height: 36px; padding: 0 8px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface-2); color: var(--text); }
 	.clear { min-height: 24px; padding: 0 8px; border-color: transparent; background: transparent; color: var(--accent); font-size: 12px; }
 	.song-levels { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
 	.song-levels b { padding: 0 6px; border-radius: 4px; background: color-mix(in srgb, var(--difficulty) 18%, transparent); color: var(--difficulty); font-size: 10.5px; line-height: 18px; }
