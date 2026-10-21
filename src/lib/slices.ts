@@ -1,22 +1,55 @@
 import type { Point } from './geometry.ts';
 import { noteColor, type DisplayNote } from './presentation.ts';
-import { beatAt, finishesChain } from './press.ts';
+import { finishesChain } from './press.ts';
 
 type Tempo = { time: number; bpm: number }[];
 export type SliceNote = DisplayNote & { paths: Point[][] };
 // A SLIDE appears where it is judged: its end button, with its track drawn faintly on the same slice.
 export type SliceItem = { kind: 'tap' | 'hold' | 'star' | 'slide' | 'touch' | 'touchHold'; position: string; color: string; note: SliceNote };
-export type Slice = { time: number; items: SliceItem[] };
+// Items judged at the same instant.
+export type Instant = { time: number; items: SliceItem[] };
 
 export const sliceCounts = [4, 5, 6];
 export const defaultSliceCount = 5;
-// Each slot up the stack is this much smaller, so the next instant to hit dominates.
+// How many beats one slice covers.
+export const sliceLengths: [number, string][] = [[.5, '1/2박'], [1, '1박'], [2, '2박'], [4, '1마디']];
+export const defaultSliceLength = 1;
+// Each slot up the stack is this much smaller, so the slice being played dominates.
 export const shrink = .8;
 // Vertical squash of each disc; much rounder than the isometric board.
 export const squash = .6;
+// Seconds the stack takes to step down one slot when a slice ends.
+export const shiftTime = .12;
 
-// Every input instant becomes one slice; notes at the same instant share it.
-export function sliceMoments(notes: SliceNote[]): Slice[] {
+// Continuous beat count since the chart's first tempo mark, following every BPM change.
+export function beatPosition(tempo: Tempo, time: number) {
+	if (time < tempo[0].time) return (time - tempo[0].time) * tempo[0].bpm / 60;
+	let beats = 0;
+	for (const [index, { time: start, bpm }] of tempo.entries()) {
+		const end = tempo[index + 1]?.time ?? Infinity;
+		beats += (Math.min(time, end) - start) * bpm / 60;
+		if (time < end) break;
+	}
+	return beats;
+}
+
+export function timeAtBeat(tempo: Tempo, beat: number) {
+	if (beat < 0) return tempo[0].time + beat * 60 / tempo[0].bpm;
+	let beats = 0;
+	for (const [index, { time: start, bpm }] of tempo.entries()) {
+		const end = tempo[index + 1]?.time ?? Infinity;
+		const span = (end - start) * bpm / 60;
+		if (beat <= beats + span) return start + (beat - beats) * 60 / bpm;
+		beats += span;
+	}
+	return Infinity;
+}
+
+// Index of the slice a time falls in; the tolerance keeps notes written on a boundary in the slice it opens.
+export const sliceIndex = (tempo: Tempo, time: number, length: number) => Math.floor(beatPosition(tempo, time) / length + 1e-6);
+
+// Every input instant, filed under the slice that holds it.
+export function sliceInstants(notes: SliceNote[], tempo: Tempo, length: number) {
 	const items: { time: number; item: SliceItem }[] = [];
 	for (const note of notes) {
 		const color = noteColor(note);
@@ -25,27 +58,27 @@ export function sliceMoments(notes: SliceNote[]): Slice[] {
 		} else items.push({ time: note.time, item: { kind: note.kind, position: note.position, color, note } });
 	}
 	items.sort((a, b) => a.time - b.time);
-	const slices: Slice[] = [];
+	const slices = new Map<number, Instant[]>();
 	for (const { time, item } of items) {
-		const last = slices.at(-1);
+		const index = sliceIndex(tempo, time, length);
+		const instants = slices.get(index) ?? [];
+		const last = instants.at(-1);
 		if (last && time - last.time < 1e-6) last.items.push(item);
-		else slices.push({ time, items: [item] });
+		else instants.push({ time, items: [item] });
+		slices.set(index, instants);
 	}
 	return slices;
 }
 
-// Fractional count of instants already passed: slice i sits `i - progress` slots above the bottom.
-// Between two instants the stack moves one slot, so dense passages scroll fast and rests slowly.
-export function sliceProgress(times: number[], time: number, tempo: Tempo) {
-	if (!times.length) return 0;
-	let k = -1;
-	while (k + 1 < times.length && times[k + 1] <= time) k++;
-	if (k < 0) return -(times[0] - time) / beatAt(tempo, times[0]);
-	if (k === times.length - 1) return k + Math.min(1, (time - times[k]) / beatAt(tempo, times[k]));
-	return k + (time - times[k]) / (times[k + 1] - times[k]);
+// Slot of slice `index` above the bottom (0 = the slice being played). The stack holds still within a slice and
+// steps down over `shiftTime` when the next one starts, so a dense passage never makes it race.
+export function sliceSlot(index: number, tempo: Tempo, time: number, length: number) {
+	const current = sliceIndex(tempo, time, length);
+	const settle = Math.min(1, (time - timeAtBeat(tempo, current * length)) / shiftTime);
+	return index - current + (1 - settle) ** 2;
 }
 
-// Disc size and centre for a (fractional) slot; slot 0 is the bottom, where notes are hit.
+// Disc size and centre for a (fractional) slot; slot 0 is the bottom.
 export function slotFrame(slot: number, sceneHeight: number, count: number) {
 	const step = 1 + shrink;
 	const stack = step * (1 - shrink ** (count - 1)) / (1 - shrink) + 1 + shrink ** (count - 1);
@@ -56,17 +89,23 @@ export function slotFrame(slot: number, sceneHeight: number, count: number) {
 	return { rx: ry / squash, ry, y, scale };
 }
 
-// The gap before a slice as a note value (1/16 = a sixteenth) when it lands on a common grid, plus milliseconds.
-export function gapLabel(gap: number, bpm: number) {
-	const ms = `${Math.round(gap * 1000)}ms`;
-	const measure = gap * bpm / 240;
-	const gcd = (a: number, b: number): number => b ? gcd(b, a % b) : a;
-	for (const division of [1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64]) {
-		const count = Math.round(measure * division);
-		if (count > 0 && Math.abs(measure * division - count) < .02) {
-			const d = gcd(count, division);
-			return { note: `${count / d}/${division / d}`, ms };
+// Where a slice starts, as measure.beat in 4/4 (12.3 = third beat of measure 12), with a ½ for half-beat slices.
+export function sliceLabel(index: number, length: number) {
+	const beat = index * length;
+	const whole = Math.floor(beat);
+	return `${Math.floor(whole / 4) + 1}.${whole % 4 + 1}${beat - whole >= .5 ? '½' : ''}`;
+}
+
+// Each note of an instant joined to the nearest note of the instant before: the path a hand travels.
+export function handPath(instants: Instant[], at: (id: string) => Point) {
+	const lines: { from: Point; to: Point; order: number }[] = [];
+	for (let i = 1; i < instants.length; i++) {
+		const previous = instants[i - 1].items.map((item) => at(item.position));
+		for (const item of instants[i].items) {
+			const to = at(item.position);
+			const from = previous.reduce((best, point) => Math.hypot(point.x - to.x, point.y - to.y) < Math.hypot(best.x - to.x, best.y - to.y) ? point : best);
+			if (from.x !== to.x || from.y !== to.y) lines.push({ from, to, order: i });
 		}
 	}
-	return { note: '', ms };
+	return lines;
 }

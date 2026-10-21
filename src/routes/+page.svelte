@@ -7,7 +7,7 @@
 	import FlatView from '#lib/FlatView.svelte';
 	import IsometricView from '#lib/IsometricView.svelte';
 	import SliceView from '#lib/SliceView.svelte';
-	import { defaultSliceCount, sliceCounts } from '#lib/slices.ts';
+	import { defaultSliceCount, defaultSliceLength, sliceCounts, sliceLengths } from '#lib/slices.ts';
 	import { markSimultaneous, noteColor as color } from '#lib/presentation.ts';
 	import { createTicker } from '#lib/ticks.ts';
 	import { defaultTrail, pressMarks, pressMoments, trailOptions, trailUnits, type TrailUnit } from '#lib/press.ts';
@@ -37,6 +37,7 @@
 	});
 	let speedsLoaded = $state(false);
 	let sliceCount = $state(defaultSliceCount);
+	let sliceLength = $state(defaultSliceLength);
 	// How long a press highlight lingers, in notes or beats; -1 turns it off, 0 keeps only the hit flash.
 	let pressTrail = $state(defaultTrail);
 	let pressTrailUnit = $state<TrailUnit>('notes');
@@ -222,6 +223,7 @@
 			localStorage.setItem('maichart.pressTrailUnit', pressTrailUnit);
 			localStorage.setItem('maichart.ticks', String(ticks));
 			localStorage.setItem('maichart.sliceCount', String(sliceCount));
+			localStorage.setItem('maichart.sliceLength', String(sliceLength));
 		} catch {
 			// Storage may be blocked; keep the current session usable.
 		}
@@ -243,6 +245,8 @@
 			if (localStorage.getItem('maichart.ticks') === 'false') ticks = false;
 			const slices = Number(localStorage.getItem('maichart.sliceCount'));
 			if (sliceCounts.includes(slices)) sliceCount = slices;
+			const beats = Number(localStorage.getItem('maichart.sliceLength'));
+			if (sliceLengths.some(([value]) => value === beats)) sliceLength = beats;
 		} catch {
 			// Invalid or inaccessible storage falls back to the defaults.
 		}
@@ -472,7 +476,7 @@
 				<FlatView notes={displayNotes} {time} {marks} noteSpeed={viewSpeeds.flat.note} touchSpeed={viewSpeeds.flat.touch} tempo={chart.tempo} />
 			{/if}
 			{#if id === 'slice'}
-				<SliceView notes={prepared} {time} tempo={chart.tempo} count={sliceCount} />
+				<SliceView notes={prepared} {time} tempo={chart.tempo} count={sliceCount} length={sliceLength} />
 			{/if}
 			{#if id === 'isometric'}
 				<IsometricView notes={prepared} {time} {marks} noteSpeed={viewSpeeds.isometric.note} touchSpeed={viewSpeeds.isometric.touch} tempo={chart.tempo} />
@@ -560,6 +564,11 @@
 								<button aria-label="단면 줄이기" disabled={sliceCount <= sliceCounts[0]} onclick={() => sliceCount--}>−</button>
 								<select id="slice-count" bind:value={sliceCount}>{#each sliceCounts as option}<option value={option}>{option}</option>{/each}</select>
 								<button aria-label="단면 늘리기" disabled={sliceCount >= sliceCounts.at(-1)!} onclick={() => sliceCount++}>+</button>
+							</div>
+							<div class="segmented four" role="radiogroup" aria-label="단면 길이">
+								{#each sliceLengths as [beats, label]}
+									<button id={`slice-length-${beats}`} role="radio" aria-checked={sliceLength === beats} onclick={() => sliceLength = beats}>{label}</button>
+								{/each}
 							</div>
 						{:else}
 						{#each speedKinds as [kind, label]}
@@ -754,6 +763,7 @@
 	.stepper button { min-height: 36px; padding: 0; font-size: 18px; }
 	.stepper select { text-align: center; }
 	.segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+	.segmented.four { grid-template-columns: repeat(4, 1fr); }
 	.segmented button { min-height: 32px; font-size: 13px; }
 	.segmented button[aria-checked='true'] { border-color: var(--accent); color: var(--accent); }
 

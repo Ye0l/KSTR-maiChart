@@ -8,7 +8,7 @@ import { sensorPolygon } from './sensor-layout.ts';
 import { markSimultaneous, noteColor } from './presentation.ts';
 import { pressMarks, pressMoments } from './press.ts';
 import { dueTicks } from './ticks.ts';
-import { gapLabel, sliceMoments, sliceProgress, slotFrame } from './slices.ts';
+import { beatPosition, handPath, shiftTime, sliceIndex, sliceInstants, sliceLabel, sliceSlot, slotFrame, timeAtBeat } from './slices.ts';
 import { beatsBetween, dropDistance, fallHeight, project, projectSlide, sectorArc, sectorSpan, timeOpacity } from './isometric.ts';
 
 const close = (actual: number, expected: number) => assert.ok(Math.abs(actual - expected) < 1e-8, `${actual} != ${expected}`);
@@ -135,40 +135,50 @@ test('ticks fall in the scheduling window once per instant', () => {
 	assert.deepEqual(dueTicks(times, 1.6, 2), []);
 });
 
-test('time slices group every input instant, with SLIDE judged at its end button', () => {
-	const notes = markSimultaneous(parseChart('(120){4}1/5,2h[4:1],3-7[4:1],B1/C,E', 120, 0).notes).map(note => ({ ...note, paths: [] }));
-	const slices = sliceMoments(notes);
-	assert.deepEqual(slices.map(slice => [slice.time, slice.items.map(item => `${item.kind}:${item.position}`)]), [
-		[0, ['tap:1', 'tap:5']], [.5, ['hold:2']], [1, ['star:3']], [1.5, ['touch:B1', 'touch:C']], [2, ['slide:7']]
-	]);
+test('time slices file every input instant under its beat window, SLIDE at its end button', () => {
+	const chart = parseChart('(120){4}1/5,2h[4:1],3-7[4:1],B1/C,E', 120, 0);
+	const notes = markSimultaneous(chart.notes).map(note => ({ ...note, paths: [] }));
+	const describe = (length: number) => [...sliceInstants(notes, chart.tempo, length)].map(([index, instants]) => [index, instants.map(instant => instant.items.map(item => `${item.kind}:${item.position}`).join('/'))]);
+	assert.deepEqual(describe(1), [[0, ['tap:1/tap:5']], [1, ['hold:2']], [2, ['star:3']], [3, ['touch:B1/touch:C']], [4, ['slide:7']]]);
+	assert.deepEqual(describe(2), [[0, ['tap:1/tap:5', 'hold:2']], [1, ['star:3', 'touch:B1/touch:C']], [2, ['slide:7']]]);
 });
 
-test('time slices move one slot per instant and fit the canvas', () => {
+test('beat positions follow BPM changes and invert', () => {
+	const tempo = [{ time: 1, bpm: 120 }, { time: 3, bpm: 60 }];
+	close(beatPosition(tempo, 1), 0);
+	close(beatPosition(tempo, 3), 4);
+	close(beatPosition(tempo, 5), 6);
+	close(beatPosition(tempo, .5), -1);
+	for (const beat of [-1, 0, 2.5, 4, 5.5]) close(beatPosition(tempo, timeAtBeat(tempo, beat)), beat);
+	assert.equal(sliceIndex(tempo, 1.5 - 1e-9, 1), 1, 'a note written on a boundary opens the next slice');
+});
+
+test('the stack holds still within a slice and steps one slot at each boundary', () => {
 	const tempo = [{ time: 0, bpm: 120 }];
-	const times = [1, 1.5, 3];
-	close(sliceProgress(times, 1, tempo), 0);
-	close(sliceProgress(times, 1.25, tempo), .5);
-	close(sliceProgress(times, 2.25, tempo), 1.5);
-	close(sliceProgress(times, .5, tempo), -1);
-	close(sliceProgress(times, 3.25, tempo), 2.5);
+	close(sliceSlot(3, tempo, 1.2, 1), 1);
+	close(sliceSlot(3, tempo, 1.45, 1), 1);
+	close(sliceSlot(2, tempo, 1.0, 1), 1);
+	close(sliceSlot(2, tempo, 1.0 + shiftTime, 1), 0);
+	assert.ok(sliceSlot(1, tempo, 1.03, 1) > -1 && sliceSlot(1, tempo, 1.03, 1) < 0, 'the finished slice slides out');
 	for (const height of [480, 900, 1600]) {
 		for (const count of [4, 5, 6]) {
 			const bottom = slotFrame(0, height, count);
 			const top = slotFrame(count - 1, height, count);
 			assert.ok(bottom.y + bottom.ry <= height - 30 && top.y - top.ry >= 20, `${height}/${count} fits`);
-			for (let slot = 0; slot < count - 1; slot += .25) assert.ok(slotFrame(slot + .25, height, count).y < slotFrame(slot, height, count).y);
 			const next = slotFrame(1, height, count);
 			assert.ok(next.y + next.ry <= bottom.y - bottom.ry + 1e-9, 'neighbouring discs do not overlap');
 		}
 	}
 });
 
-test('slice gaps read as note values when on the grid', () => {
-	assert.deepEqual(gapLabel(.125, 120), { note: '1/16', ms: '125ms' });
-	assert.deepEqual(gapLabel(.5, 120), { note: '1/4', ms: '500ms' });
-	assert.deepEqual(gapLabel(.75, 120), { note: '3/8', ms: '750ms' });
-	assert.deepEqual(gapLabel(1 / 6, 120), { note: '1/12', ms: '167ms' });
-	assert.deepEqual(gapLabel(.11, 120), { note: '', ms: '110ms' });
+test('slice labels read as measure.beat and the hand path joins nearest notes in order', () => {
+	assert.equal(sliceLabel(0, 1), '1.1');
+	assert.equal(sliceLabel(6, 1), '2.3');
+	assert.equal(sliceLabel(5, .5), '1.3½');
+	assert.equal(sliceLabel(3, 4), '4.1');
+	const item = (position: string) => ({ position }) as never;
+	const lines = handPath([{ time: 0, items: [item('1'), item('5')] }, { time: 1, items: [item('2')] }, { time: 2, items: [item('2')] }], position);
+	assert.deepEqual(lines.map(line => [line.from, line.to, line.order]), [[position('1'), position('2'), 1]], 'from the nearer of the chord, and no line for a repeat');
 });
 
 test('TAP/HOLD are pink, input chords yellow, and BREAK takes priority', () => {
