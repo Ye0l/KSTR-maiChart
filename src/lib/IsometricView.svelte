@@ -101,7 +101,7 @@
 				{#each guide.notes as note}
 					{@const fade = time > note.time && !(note.duration > 0 && time < note.time + note.duration) ? clamp(1 - (time - note.time) / .18) : 1}
 					{#each sectorArc(position(note.position)) as piece}
-						<path d={piece.d} fill="none" stroke={noteColor(note)} stroke-width={1 + 4 * piece.weight} opacity={(.3 + .7 * piece.weight) * fade} vector-effect="non-scaling-stroke" />
+						<path d={piece.d} fill="none" stroke={noteColor(note)} stroke-width={1 + 6 * piece.weight} opacity={(.3 + .7 * piece.weight) * fade} vector-effect="non-scaling-stroke" />
 					{/each}
 				{/each}
 			</g>

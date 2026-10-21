@@ -42,7 +42,8 @@ export function beatsBetween(tempo: { time: number; bpm: number }[], from: numbe
 	return beats;
 }
 
-// Arc pieces spanning one button sector (±45°) on each side of a point, weighted 1 at the point and 0 at the neighbours.
+// Arc pieces spanning ±30° on each side of a point (two thirds of the way to the neighbouring buttons), weighted 1 at the point and 0 at the ends.
+export const sectorSpan = Math.PI / 6;
 const sectorArcs = new Map<string, { d: string; weight: number }[]>();
 export function sectorArc(point: Point, pieces = 12) {
 	const key = `${point.x},${point.y},${pieces}`;
@@ -51,8 +52,8 @@ export function sectorArc(point: Point, pieces = 12) {
 	const angle = Math.atan2(point.y - 300, point.x - 300);
 	const at = (theta: number) => `${300 + 254 * Math.cos(theta)},${300 + 254 * Math.sin(theta)}`;
 	const arcs = Array.from({ length: pieces }, (_, i) => {
-		const a = angle + (i / pieces * 2 - 1) * Math.PI / 4;
-		const b = angle + ((i + 1) / pieces * 2 - 1) * Math.PI / 4;
+		const a = angle + (i / pieces * 2 - 1) * sectorSpan;
+		const b = angle + ((i + 1) / pieces * 2 - 1) * sectorSpan;
 		return { d: `M${at(a)} A254,254 0 0 1 ${at(b)}`, weight: 1 - Math.abs((i + .5) / pieces * 2 - 1) };
 	});
 	sectorArcs.set(key, arcs);
