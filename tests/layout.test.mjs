@@ -13,7 +13,8 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 test('collapsible layout, mobile overlay, tabs and playback', { timeout: 30000 }, async () => {
 	const profile = await mkdtemp(join(tmpdir(), 'maichart-layout-'));
-	const browser = spawn(process.env.CHROMIUM ?? 'chromium', ['--headless', '--no-sandbox', '--disable-dev-shm-usage', '--remote-debugging-port=0', `--user-data-dir=${profile}`, process.env.VIEWER_URL ?? 'http://localhost:5173/']);
+	// The window must cover the emulated 1280x800 viewport: Chrome drops synthetic input outside the real window.
+	const browser = spawn(process.env.CHROMIUM ?? 'chromium', ['--headless', '--no-sandbox', '--disable-dev-shm-usage', '--remote-debugging-port=0', '--window-size=1280,800', `--user-data-dir=${profile}`, process.env.VIEWER_URL ?? 'http://localhost:5173/']);
 	let socket;
 	try {
 		const endpoint = await new Promise((resolve, reject) => {
