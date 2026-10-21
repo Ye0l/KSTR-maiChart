@@ -308,12 +308,12 @@ test('collapsible layout, mobile overlay, tabs and playback', { timeout: 30000 }
 		await tap();
 		const center = { x: scrollBox.x + scrollBox.width / 2, y: scrollBox.y + scrollBox.height / 2 };
 		await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', ...center, button: 'left', clickCount: 1 });
-		for (let step = 1; step <= 4; step++) await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: center.x, y: center.y - step * 60, button: 'left', buttons: 1 });
-		await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: center.x, y: center.y - 240, button: 'left', clickCount: 1 });
+		for (let step = 1; step <= 4; step++) await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: center.x, y: center.y + step * 60, button: 'left', buttons: 1 });
+		await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: center.x, y: center.y + 240, button: 'left', clickCount: 1 });
 		await sleep(150);
 		assert.equal(await evaluate('document.querySelector(".controls button").textContent'), '재생', 'dragging pauses and is not a tap');
 		const afterDrag = Number(await evaluate('document.querySelector(".seek").value'));
-		assert.ok(afterDrag > 10.9 && afterDrag < 11.3, 'an upward mouse drag of 240px seeks one second forward');
+		assert.ok(afterDrag > 10.9 && afterDrag < 11.3, 'a downward mouse drag of 240px seeks one second forward');
 		for (const width of [360, 390, 720]) {
 			await resize(width, 844);
 			await sleep(50);
@@ -323,18 +323,18 @@ test('collapsible layout, mobile overlay, tabs and playback', { timeout: 30000 }
 				await setValue('.seek', 20);
 				const box = await bounds('.timeline-scroll');
 				const x = box.x + box.width / 2;
-				const y = box.y + box.height * .75;
+				const y = box.y + box.height * .25;
 				await cdp('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
 				for (let step = 1; step <= 6; step++) {
 					await sleep(16);
-					await cdp('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y - step * 40 }] });
+					await cdp('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y + step * 40 }] });
 				}
 				const duringDrag = Number(await evaluate('document.querySelector(".seek").value'));
-				assert.ok(duringDrag > 20.5, 'mobile upward drag seeks forward');
+				assert.ok(duringDrag > 20.5, 'mobile downward drag seeks forward');
 				await cdp('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 				await sleep(700);
 				assert.ok(Number(await evaluate('document.querySelector(".seek").value')) > duringDrag + .1, 'fast flick retains native momentum after release');
-				const nativeTime = await evaluate('document.querySelector(".timeline-scroll").scrollTop / 240');
+				const nativeTime = await evaluate('(() => { const el = document.querySelector(".timeline-scroll"); return (el.scrollHeight - el.clientHeight - el.scrollTop) / 240; })()');
 				assert.ok(Math.abs(Number(await evaluate('document.querySelector(".seek").value')) - nativeTime) < .02, 'chart follows native scrolling');
 				await cdp('Emulation.setTouchEmulationEnabled', { enabled: false });
 			}

@@ -41,14 +41,16 @@
 		activeViews = activeViews.includes(id) ? activeViews.filter(view => view !== id) : [...activeViews, id];
 	}
 	let timelineScroll: HTMLDivElement | undefined = $state();
-	// Native scrolling provides wheel distance and touch momentum; 240px is one second.
+	// Native scrolling provides touch momentum; 240px is one second.
+	// The offset runs backwards (bottom = chart start) so a downward swipe pulls the falling notes forward.
 	const pixelsPerSecond = 240;
+	const scrollTopAt = (seconds: number) => (chart.duration - seconds) * pixelsPerSecond;
 	let programmedScrollTop: number | undefined;
 	// Last known scroll offset, so syncing never reads layout right after the views were mutated.
 	let knownScrollTop = 0;
 	// A press pauses at once so drags can seek; a press that barely moved is a tap that toggles playback.
 	let press: { x: number; y: number; playing: boolean } | undefined;
-	// Mouse and pen have no native drag-scroll, so a held drag moves the timeline at the touch rate.
+	// Mouse and pen have no native drag-scroll; a held drag moves the timeline at the touch rate, grabbing the falling notes (down = forward).
 	let drag = $state<{ y: number; top: number }>();
 
 	function seekFromScroll(scroller: HTMLDivElement) {
@@ -59,8 +61,36 @@
 			return;
 		}
 		programmedScrollTop = undefined;
-		if (!playing) time = Math.max(0, Math.min(chart.duration, top / pixelsPerSecond));
+		if (!playing) time = Math.max(0, Math.min(chart.duration, chart.duration - top / pixelsPerSecond));
 	}
+
+	// Wheel and keys keep their usual sense (down = forward), so they move the reversed offset themselves.
+	function seekBy(seconds: number) {
+		playing = false;
+		time = Math.max(0, Math.min(chart.duration, time + seconds));
+	}
+
+	function seekKeys(event: KeyboardEvent & { currentTarget: HTMLElement }) {
+		const page = event.currentTarget.clientHeight * .9 / pixelsPerSecond;
+		const step = { ArrowDown: 40 / pixelsPerSecond, ArrowUp: -40 / pixelsPerSecond, PageDown: page, PageUp: -page, ' ': event.shiftKey ? -page : page }[event.key];
+		if (step === undefined && event.key !== 'Home' && event.key !== 'End') return;
+		event.preventDefault();
+		if (event.key === 'Home') seekBy(-time);
+		else if (event.key === 'End') seekBy(chart.duration - time);
+		else seekBy(step!);
+	}
+
+	$effect(() => {
+		if (!timelineScroll) return;
+		// Registered by hand: the wheel must be cancelable, and Svelte attaches wheel handlers as passive.
+		const wheel = (event: WheelEvent) => {
+			event.preventDefault();
+			const unit = event.deltaMode === 1 ? 40 : event.deltaMode === 2 ? timelineScroll!.clientHeight : 1;
+			seekBy(event.deltaY * unit / pixelsPerSecond);
+		};
+		timelineScroll.addEventListener('wheel', wheel, { passive: false });
+		return () => timelineScroll?.removeEventListener('wheel', wheel);
+	});
 
 	function tabKeys(event: KeyboardEvent) {
 		if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -148,7 +178,7 @@
 
 	$effect(() => {
 		if (!timelineScroll) return;
-		const top = time * pixelsPerSecond;
+		const top = scrollTopAt(time);
 		if (Math.abs(knownScrollTop - top) > 1) {
 			timelineScroll.scrollTop = top;
 			knownScrollTop = programmedScrollTop = top;
@@ -396,8 +426,7 @@
 			</div>
 			{/each}
 			{#if !activeViews.length}<p class="empty">상단에서 표시할 뷰를 선택하세요.</p>{/if}
-			<div class="timeline-scroll" class:dragging={drag} bind:this={timelineScroll} role="scrollbar" aria-controls="chart-stage" aria-orientation="vertical" aria-valuemin="0" aria-valuemax={chart.duration} aria-valuenow={time} aria-valuetext={timestamp(time)} tabindex="0" aria-label="휠, 드래그 또는 상하 스와이프로 재생 위치 탐색, 탭하여 재생·일시정지"
-				onwheel={() => playing = false}
+			<div class="timeline-scroll" class:dragging={drag} bind:this={timelineScroll} role="scrollbar" aria-controls="chart-stage" aria-orientation="vertical" aria-valuemin="0" aria-valuemax={chart.duration} aria-valuenow={time} aria-valuetext={timestamp(time)} tabindex="0" aria-label="휠, 드래그 또는 상하 스와이프(아래로 끌면 앞으로)로 재생 위치 탐색, 탭하여 재생·일시정지"
 				onpointerdown={(event) => {
 					press = { x: event.clientX, y: event.clientY, playing };
 					playing = false;
@@ -413,7 +442,7 @@
 					if (press && !press.playing && Math.hypot(event.clientX - press.x, event.clientY - press.y) < 10) toggle();
 					press = undefined;
 				}}
-				onkeydown={(event) => { if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) playing = false; }}
+				onkeydown={seekKeys}
 				onscroll={(event) => seekFromScroll(event.currentTarget)}>
 				<div class="timeline-content" style:height={`calc(100% + ${chart.duration * pixelsPerSecond}px)`}></div>
 			</div>
