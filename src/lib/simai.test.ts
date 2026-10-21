@@ -107,6 +107,23 @@ test('press highlights keep the newest press per button and fade over the chosen
 	assert.deepEqual(pressMarks(presses, 1.2, tempo, 0), []);
 });
 
+test('counting notes keeps the last press moments, a chord counting once, however far apart they are', () => {
+	const tempo = [{ time: 0, bpm: 120 }];
+	const presses = [
+		{ time: 0, button: '1', color: 'a' }, { time: 10, button: '2', color: 'b' }, { time: 10, button: '3', color: 'b' },
+		{ time: 10.1, button: '4', color: 'c' }, { time: 10.2, button: '1', color: 'd' }
+	];
+	const marks = (time: number, trail: number) => pressMarks(presses, time, tempo, trail, 'notes').map(mark => [mark.button, mark.color, mark.strength]).sort();
+	assert.deepEqual(marks(20, 4), [['1', 'd', 1], ['2', 'b', .5], ['3', 'b', .5], ['4', 'c', .75]], 'old presses stay until newer notes push them out');
+	assert.deepEqual(marks(20, 2), [['1', 'd', 1], ['4', 'c', .5]]);
+	assert.deepEqual(marks(5, 4), [['1', 'a', 1]]);
+	const flash = marks(10.25, 0);
+	assert.deepEqual(flash.map(([button]) => button), ['1'], 'zero notes only flashes the latest press');
+	close(Number(flash[0][2]), 1 - .05 / .18);
+	assert.deepEqual(marks(20, 0), []);
+	assert.deepEqual(pressMarks(presses, 20, tempo, -1, 'notes'), []);
+});
+
 test('TAP/HOLD are pink, input chords yellow, and BREAK takes priority', () => {
 	const notes = markSimultaneous(parseChart('(120){4}1,2h[4:1],3/4h[4:1],5b/6h[4:1],7bh[4:1]/8,E').notes);
 	assert.deepEqual(notes.map(noteColor), ['#ff68b7', '#ff68b7', '#ffdb4d', '#ffdb4d', '#ff9a35', '#ffdb4d', '#ff9a35', '#ffdb4d']);

@@ -7,7 +7,7 @@
 	import FlatView from '#lib/FlatView.svelte';
 	import IsometricView from '#lib/IsometricView.svelte';
 	import { markSimultaneous, noteColor as color } from '#lib/presentation.ts';
-	import { defaultTrail, pressMarks, pressMoments, trailOptions } from '#lib/press.ts';
+	import { defaultTrail, pressMarks, pressMoments, trailOptions, trailUnits, type TrailUnit } from '#lib/press.ts';
 
 	let { data }: { data: PageData } = $props();
 	const names = ['EASY', 'BASIC', 'ADVANCED', 'EXPERT', 'MASTER', 'Re:MASTER'];
@@ -30,8 +30,9 @@
 		isometric: { note: 2, touch: 2 }
 	});
 	let speedsLoaded = $state(false);
-	// Beats a press highlight lingers; -1 turns it off, 0 keeps only the hit flash.
+	// How long a press highlight lingers, in notes or beats; -1 turns it off, 0 keeps only the hit flash.
 	let pressTrail = $state(defaultTrail);
+	let pressTrailUnit = $state<TrailUnit>('notes');
 	const speedKinds = [['note', '노트'], ['touch', '터치']] as const;
 	const speeds = Array.from({ length: 37 }, (_, i) => 1 + i * .25);
 	const approachTime = (note: Note) => 2 / (note.kind.startsWith('touch') ? viewSpeeds.game.touch : viewSpeeds.game.note);
@@ -117,7 +118,7 @@
 		}, []) : []
 	})));
 	const presses = $derived(pressMoments(displayNotes));
-	const marks = $derived(pressMarks(presses, time, chart.tempo, pressTrail));
+	const marks = $derived(pressMarks(presses, time, chart.tempo, pressTrail, pressTrailUnit));
 	const visible = $derived(prepared.filter((note) => note.time - approachTime(note) <= time && time <= note.time + note.wait + note.duration + .18));
 	const songs = $derived(data.songs.map((song) => {
 		const match = /^(\d+) · (.*?)( \[DX\])?$/.exec(song.title);
@@ -207,6 +208,7 @@
 		try {
 			localStorage.setItem('maichart.speeds', JSON.stringify(viewSpeeds));
 			localStorage.setItem('maichart.pressTrail', String(pressTrail));
+			localStorage.setItem('maichart.pressTrailUnit', pressTrailUnit);
 		} catch {
 			// Storage may be blocked; keep the current session usable.
 		}
@@ -223,6 +225,8 @@
 			}
 			const trail = Number(localStorage.getItem('maichart.pressTrail') ?? NaN);
 			if (trailOptions.includes(trail)) pressTrail = trail;
+			const unit = localStorage.getItem('maichart.pressTrailUnit');
+			if (trailUnits.some(([value]) => value === unit)) pressTrailUnit = unit as TrailUnit;
 		} catch {
 			// Invalid or inaccessible storage falls back to the defaults.
 		}
@@ -538,10 +542,15 @@
 				<fieldset class="view-speeds">
 					<legend>누를 위치 강조</legend>
 					<div class="stepper">
-						<label for="press-trail">잔상 (비트)</label>
+						<label for="press-trail">잔상</label>
 						<button aria-label="잔상 줄이기" disabled={pressTrail <= trailOptions[0]} onclick={() => pressTrail--}>−</button>
 						<select id="press-trail" bind:value={pressTrail}>{#each trailOptions as beats}<option value={beats}>{beats < 0 ? '없음' : beats}</option>{/each}</select>
 						<button aria-label="잔상 늘리기" disabled={pressTrail >= trailOptions.at(-1)!} onclick={() => pressTrail++}>+</button>
+					</div>
+					<div class="segmented" role="radiogroup" aria-label="잔상 단위">
+						{#each trailUnits as [unit, label]}
+							<button id={`press-trail-${unit}`} role="radio" aria-checked={pressTrailUnit === unit} onclick={() => pressTrailUnit = unit}>{label}</button>
+						{/each}
 					</div>
 				</fieldset>
 			</div>
@@ -705,6 +714,9 @@
 	.stepper { display: grid; grid-template-columns: 1fr 40px 84px 40px; align-items: center; gap: 6px; font-size: 13px; }
 	.stepper button { min-height: 36px; padding: 0; font-size: 18px; }
 	.stepper select { text-align: center; }
+	.segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+	.segmented button { min-height: 32px; font-size: 13px; }
+	.segmented button[aria-checked='true'] { border-color: var(--accent); color: var(--accent); }
 
 	@media (max-width: 720px) {
 		/* The pane opens as a bottom sheet here, so a sidebar glyph would mislead. */
