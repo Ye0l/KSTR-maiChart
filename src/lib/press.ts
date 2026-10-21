@@ -1,0 +1,43 @@
+import { clamp } from './geometry.ts';
+import { noteColor, type DisplayNote } from './presentation.ts';
+
+export type Press = { time: number; button: string; color: string };
+export type PressMark = Press & { strength: number };
+
+// The flash every press gets, even with no afterimage; matches the note fade after a hit.
+const flash = .18;
+export const trailOptions = Array.from({ length: 18 }, (_, i) => i - 1);
+export const defaultTrail = 4;
+
+// Moments a button must be down for a perfect: TAP, HOLD start, star head, and where each SLIDE finishes.
+export function pressMoments(notes: DisplayNote[]): Press[] {
+	const end = (note: DisplayNote) => note.time + note.wait + note.duration;
+	const near = (a: number, b: number) => Math.abs(a - b) < 1e-6;
+	const presses: Press[] = [];
+	for (const note of notes) {
+		if (note.kind === 'tap' || note.kind === 'hold' || note.kind === 'star') {
+			presses.push({ time: note.time, button: note.position, color: noteColor(note) });
+		} else if (note.kind === 'slide') {
+			const button = String(note.segments.at(-1)!.end);
+			// A SLIDE with per-segment timings is split into parts; only the last part's end is judged.
+			const continued = notes.some((next) => next.kind === 'slide' && next !== note && next.wait === 0 && next.position === button && near(next.time, end(note)));
+			if (!continued) presses.push({ time: end(note), button, color: noteColor(note) });
+		}
+	}
+	return presses.sort((a, b) => a.time - b.time);
+}
+
+const beatAt = (tempo: { time: number; bpm: number }[], at: number) => 60 / (tempo.findLast((entry) => entry.time <= at) ?? tempo[0]).bpm;
+
+// The newest press on each button, fading out over `trail` beats; -1 shows nothing.
+export function pressMarks(presses: Press[], time: number, tempo: { time: number; bpm: number }[], trail: number): PressMark[] {
+	if (trail < 0) return [];
+	const latest = new Map<string, PressMark>();
+	for (const press of presses) {
+		if (press.time > time) break;
+		const span = Math.max(flash, trail * beatAt(tempo, press.time));
+		const strength = clamp(1 - (time - press.time) / span);
+		if (strength > 0) latest.set(press.button, { ...press, strength });
+	}
+	return [...latest.values()];
+}

@@ -6,6 +6,7 @@ import { parseChart, readMaidata } from './simai.ts';
 import { distance, position, slidePath, trace } from './geometry.ts';
 import { sensorPolygon } from './sensor-layout.ts';
 import { markSimultaneous, noteColor } from './presentation.ts';
+import { pressMarks, pressMoments } from './press.ts';
 import { beatsBetween, depthOpacity, dropDistance, fallHeight, project, projectSlide, sectorArc, sectorSpan } from './isometric.ts';
 
 const close = (actual: number, expected: number) => assert.ok(Math.abs(actual - expected) < 1e-8, `${actual} != ${expected}`);
@@ -81,6 +82,29 @@ test('isometric SLIDE height follows path distance and the tracing interval', ()
 			assert.ok(projectSlide(path, .5, 1, .75, 2 / 6).every(point => Number.isFinite(point.x) && Number.isFinite(point.y)), shape);
 		}
 	}
+});
+
+test('press moments cover TAP, HOLD start, star and SLIDE end but not TOUCH', () => {
+	const chart = parseChart('(120){4}1,2h[4:1],3-5[4:1],B1/C,E', 120, 0);
+	const presses = pressMoments(markSimultaneous(chart.notes));
+	assert.deepEqual(presses.map(press => [press.time, press.button]), [[0, '1'], [.5, '2'], [1, '3'], [2, '5']]);
+});
+
+test('a SLIDE with per-segment timings is judged only where the chain finishes', () => {
+	const chart = parseChart('(120){4}1-3[4:1]-5[4:1],E', 120, 0);
+	assert.deepEqual(pressMoments(markSimultaneous(chart.notes)).map(press => [press.time, press.button]), [[0, '1'], [1.5, '5']]);
+});
+
+test('press highlights keep the newest press per button and fade over the chosen beats', () => {
+	const tempo = [{ time: 0, bpm: 120 }];
+	const presses = [{ time: 0, button: '1', color: 'a' }, { time: 1, button: '1', color: 'b' }, { time: 1, button: '2', color: 'c' }];
+	assert.deepEqual(pressMarks(presses, 1, tempo, -1), []);
+	assert.deepEqual(pressMarks(presses, 1, tempo, 4).map(mark => [mark.button, mark.color, mark.strength]), [['1', 'b', 1], ['2', 'c', 1]]);
+	close(pressMarks(presses, 1.5, tempo, 4)[0].strength, .75);
+	assert.deepEqual(pressMarks(presses, 3.1, tempo, 4), []);
+	assert.deepEqual(pressMarks(presses, .99, tempo, 4).map(mark => mark.button), ['1'], 'future presses are not shown');
+	assert.equal(pressMarks(presses, 1.1, tempo, 0).length, 2, 'zero beats still flashes on the hit');
+	assert.deepEqual(pressMarks(presses, 1.2, tempo, 0), []);
 });
 
 test('TAP/HOLD are pink, input chords yellow, and BREAK takes priority', () => {

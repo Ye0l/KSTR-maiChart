@@ -259,6 +259,18 @@ test('collapsible layout, mobile overlay, tabs and playback', { timeout: 30000 }
 		await setValue('#flat-note-speed', 2);
 		assert.equal(await evaluate(`!!document.querySelector(${JSON.stringify(flatTap)})`), true);
 		assert.equal(await attr(isoTap, 'data-height'), isoLift, 'flat speed does not affect isometric height');
+		const pressMarks = () => evaluate(`Array.from(document.querySelectorAll('svg[data-view] .press-mark'), el => el.closest('svg').dataset.view + ':' + el.dataset.button)`);
+		await setValue('.seek', firstTap.time - .01);
+		assert.ok(!(await pressMarks()).includes(`game:${firstTap.position}`), 'no press highlight before the hit');
+		await setValue('.seek', firstTap.time);
+		for (const id of ['game', 'flat', 'isometric']) assert.ok((await pressMarks()).includes(`${id}:${firstTap.position}`), `${id} highlights the button to press`);
+		assert.equal(await evaluate('document.querySelector("#press-trail").value'), '4', 'press afterimage defaults to 4 beats');
+		await setValue('#press-trail', -1);
+		assert.deepEqual(await pressMarks(), [], '-1 turns press highlights off');
+		await reload();
+		await showViews('game', 'flat', 'isometric');
+		assert.equal(await evaluate('document.querySelector("#press-trail").value'), '-1', 'press afterimage setting survives a reload');
+		await setValue('#press-trail', 4);
 		await showViews('flat');
 		await click('#view-game');
 		assert.deepEqual(await evaluate('Array.from(document.querySelectorAll("[data-panel]"), el => el.dataset.panel)'), ['flat', 'game'], 'views appear in activation order');
@@ -267,7 +279,7 @@ test('collapsible layout, mobile overlay, tabs and playback', { timeout: 30000 }
 		await click('#view-isometric');
 		await click('#view-flat');
 		assert.deepEqual(await evaluate('Array.from(document.querySelectorAll("[data-panel]"), el => el.dataset.panel)'), ['game', 'isometric', 'flat'], 'reenabled views append to the end');
-		assert.deepEqual(await evaluate('Array.from(document.querySelectorAll(".view-speeds legend"), el => el.textContent)'), ['게임', 'Isometric', '평면'], 'speed controls follow viewer order');
+		assert.deepEqual(await evaluate('Array.from(document.querySelectorAll(".view-speeds legend"), el => el.textContent)'), ['게임', 'Isometric', '평면', '누를 위치 강조'], 'speed controls follow viewer order');
 		for (const id of ['game', 'isometric', 'flat']) await click('#view-' + id);
 		assert.equal(await evaluate('document.querySelectorAll("[data-panel]").length'), 0);
 		assert.match(await evaluate('document.querySelector("#chart-stage").textContent'), /표시할 뷰/);

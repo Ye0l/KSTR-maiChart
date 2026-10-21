@@ -4,10 +4,11 @@
 	import { chevrons, clamp, distance, pathData, position, star, trace, type Point } from './geometry.ts';
 	import { noteColor, type DisplayNote } from './presentation.ts';
 	import { beatsBetween, depthOpacity, dropDistance, fallHeight, planeTransform, project, projectSlide, sectorArc } from './isometric.ts';
+	import type { PressMark } from './press.ts';
 
-	let { notes, time, noteSpeed, touchSpeed, tempo }: {
+	let { notes, time, noteSpeed, touchSpeed, tempo, marks }: {
 		notes: (DisplayNote & { paths: Point[][] })[]; time: number; noteSpeed: number; touchSpeed: number;
-		tempo: { time: number; bpm: number }[];
+		tempo: { time: number; bpm: number }[]; marks: PressMark[];
 	} = $props();
 	const buttons = Array.from({ length: 8 }, (_, i) => String(i + 1));
 	let canvas: SVGSVGElement | undefined;
@@ -70,6 +71,10 @@
 				{@const target = position(button)}
 				<circle cx={target.x} cy={target.y} r="15" fill="#3a4560" stroke="#8790a7" stroke-width="1.5" />
 				<text x={target.x} y={target.y + 5} text-anchor="middle" fill="#e1e6f0" font-size="15" font-weight="700">{button}</text>
+			{/each}
+			{#each marks as mark}
+				{@const target = position(mark.button)}
+				<circle class="press-mark" data-button={mark.button} cx={target.x} cy={target.y} r="30" fill={mark.color} fill-opacity=".3" stroke={mark.color} stroke-width="4" opacity={mark.strength} pointer-events="none" />
 			{/each}
 		</g>
 		<!-- Landing marks converge on the spot a note will hit. -->

@@ -7,6 +7,7 @@
 	import FlatView from '#lib/FlatView.svelte';
 	import IsometricView from '#lib/IsometricView.svelte';
 	import { markSimultaneous, noteColor as color } from '#lib/presentation.ts';
+	import { defaultTrail, pressMarks, pressMoments, trailOptions } from '#lib/press.ts';
 
 	let { data }: { data: PageData } = $props();
 	const names = ['EASY', 'BASIC', 'ADVANCED', 'EXPERT', 'MASTER', 'Re:MASTER'];
@@ -29,6 +30,8 @@
 		isometric: { note: 2, touch: 2 }
 	});
 	let speedsLoaded = $state(false);
+	// Beats a press highlight lingers; -1 turns it off, 0 keeps only the hit flash.
+	let pressTrail = $state(defaultTrail);
 	const speedKinds = [['note', '노트'], ['touch', '터치']] as const;
 	const speeds = Array.from({ length: 37 }, (_, i) => 1 + i * .25);
 	const approachTime = (note: Note) => 2 / (note.kind.startsWith('touch') ? viewSpeeds.game.touch : viewSpeeds.game.note);
@@ -113,6 +116,8 @@
 			return [...paths, ...next];
 		}, []) : []
 	})));
+	const presses = $derived(pressMoments(displayNotes));
+	const marks = $derived(pressMarks(presses, time, chart.tempo, pressTrail));
 	const visible = $derived(prepared.filter((note) => note.time - approachTime(note) <= time && time <= note.time + note.wait + note.duration + .18));
 	const songs = $derived(data.songs.map((song) => {
 		const match = /^(\d+) · (.*?)( \[DX\])?$/.exec(song.title);
@@ -201,6 +206,7 @@
 		if (!speedsLoaded) return;
 		try {
 			localStorage.setItem('maichart.speeds', JSON.stringify(viewSpeeds));
+			localStorage.setItem('maichart.pressTrail', String(pressTrail));
 		} catch {
 			// Storage may be blocked; keep the current session usable.
 		}
@@ -215,6 +221,8 @@
 				if (speeds.includes(settings?.note)) viewSpeeds[id].note = settings.note;
 				if (speeds.includes(settings?.touch)) viewSpeeds[id].touch = settings.touch;
 			}
+			const trail = Number(localStorage.getItem('maichart.pressTrail') ?? NaN);
+			if (trailOptions.includes(trail)) pressTrail = trail;
 		} catch {
 			// Invalid or inaccessible storage falls back to the defaults.
 		}
@@ -378,6 +386,10 @@
 					<circle cx={target.x} cy={target.y} r="13" fill="#31394d" />
 					<text x={target.x} y={target.y + 5} text-anchor="middle" fill="#c8cfe0" font-size="14">{button}</text>
 				{/each}
+				{#each marks as mark}
+					{@const target = position(mark.button)}
+					<circle class="press-mark" data-button={mark.button} cx={target.x} cy={target.y} r="30" fill={mark.color} fill-opacity=".3" stroke={mark.color} stroke-width="4" opacity={mark.strength} pointer-events="none" />
+				{/each}
 				<!-- Tracks sit behind approaching notes. -->
 				{#each visible.filter((note) => note.kind === 'slide') as note}
 					{@const progress = note.duration ? clamp((time - note.time - note.wait) / note.duration) : Number(time >= note.time + note.wait)}
@@ -430,10 +442,10 @@
 			</svg>
 			{/if}
 			{#if id === 'flat'}
-				<FlatView notes={displayNotes} {time} noteSpeed={viewSpeeds.flat.note} touchSpeed={viewSpeeds.flat.touch} tempo={chart.tempo} />
+				<FlatView notes={displayNotes} {time} {marks} noteSpeed={viewSpeeds.flat.note} touchSpeed={viewSpeeds.flat.touch} tempo={chart.tempo} />
 			{/if}
 			{#if id === 'isometric'}
-				<IsometricView notes={prepared} {time} noteSpeed={viewSpeeds.isometric.note} touchSpeed={viewSpeeds.isometric.touch} tempo={chart.tempo} />
+				<IsometricView notes={prepared} {time} {marks} noteSpeed={viewSpeeds.isometric.note} touchSpeed={viewSpeeds.isometric.touch} tempo={chart.tempo} />
 			{/if}
 			</div>
 			{/each}
@@ -523,6 +535,15 @@
 				{:else}
 					<p class="hint">표시 중인 뷰가 없습니다.</p>
 				{/each}
+				<fieldset class="view-speeds">
+					<legend>누를 위치 강조</legend>
+					<div class="stepper">
+						<label for="press-trail">잔상 (비트)</label>
+						<button aria-label="잔상 줄이기" disabled={pressTrail <= trailOptions[0]} onclick={() => pressTrail--}>−</button>
+						<select id="press-trail" bind:value={pressTrail}>{#each trailOptions as beats}<option value={beats}>{beats < 0 ? '없음' : beats}</option>{/each}</select>
+						<button aria-label="잔상 늘리기" disabled={pressTrail >= trailOptions.at(-1)!} onclick={() => pressTrail++}>+</button>
+					</div>
+				</fieldset>
 			</div>
 		</div>
 		<button class="player-toggle icon-button" title={playerOpen ? '재생바 접기' : '재생바 펼치기'} aria-label={playerOpen ? '재생바 접기' : '재생바 펼치기'} aria-expanded={playerOpen} aria-controls="player-content" onclick={() => playerOpen = !playerOpen}><span class="icon" class:icon-down={playerOpen} class:icon-up={!playerOpen}></span></button>
