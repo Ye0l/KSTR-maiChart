@@ -7,7 +7,7 @@ import { distance, position, slidePath, trace } from './geometry.ts';
 import { sensorPolygon } from './sensor-layout.ts';
 import { markSimultaneous, noteColor } from './presentation.ts';
 import { pressMarks, pressMoments } from './press.ts';
-import { beatsBetween, depthOpacity, dropDistance, fallHeight, project, projectSlide, sectorArc, sectorSpan } from './isometric.ts';
+import { beatsBetween, dropDistance, fallHeight, project, projectSlide, sectorArc, sectorSpan, timeOpacity } from './isometric.ts';
 
 const close = (actual: number, expected: number) => assert.ok(Math.abs(actual - expected) < 1e-8, `${actual} != ${expected}`);
 
@@ -33,11 +33,12 @@ test('sector emphasis peaks at the note and fades out short of the neighbouring 
 	assert.ok(Math.abs(Math.atan2(end[1] - 300, end[0] - 300) - (angle + sectorSpan)) < 1e-3, 'sector ends toward button 4');
 });
 
-test('isometric rear four lanes are lighter while front lanes and center stay opaque', () => {
-	for (let lane = 1; lane <= 8; lane++) {
-		assert.equal(depthOpacity(position(String(lane))), [1, 2, 7, 8].includes(lane) ? .45 : 1);
-	}
-	assert.equal(depthOpacity(position('C')), 1);
+test('isometric notes brighten as their hit nears, whatever lane they are in', () => {
+	close(timeOpacity(2, 2), .35);
+	close(timeOpacity(1, 2), .675);
+	close(timeOpacity(0, 2), 1);
+	close(timeOpacity(-1, 2), 1);
+	close(timeOpacity(5, 2), .35);
 });
 
 test('isometric spawn starts above the top at every canvas height and sensor position', () => {

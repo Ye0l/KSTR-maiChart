@@ -3,7 +3,7 @@
 	import SensorLayout from './SensorLayout.svelte';
 	import { chevrons, clamp, distance, pathData, position, star, trace, type Point } from './geometry.ts';
 	import { noteColor, type DisplayNote } from './presentation.ts';
-	import { beatsBetween, depthOpacity, dropDistance, fallHeight, planeTransform, project, projectSlide, sectorArc } from './isometric.ts';
+	import { beatsBetween, dropDistance, fallHeight, planeTransform, project, projectSlide, sectorArc, timeOpacity } from './isometric.ts';
 	import type { PressMark } from './press.ts';
 
 	let { notes, time, noteSpeed, touchSpeed, tempo, marks }: {
@@ -132,7 +132,7 @@
 					{/if}
 					<path class="slide-time" d={pathData(projectSlide(points, start, note.duration, time, approach(note), viewHeight))} fill="none" stroke={noteColor(note)} stroke-width="1.5" opacity=".35" />
 					{#if time >= note.time && time <= finish}
-						<polygon opacity={depthOpacity(marker)} points={star(marker, 20)} transform={plane()} fill={noteColor(note)} stroke="white" stroke-width="2" />
+						<polygon points={star(marker, 20)} transform={plane()} fill={noteColor(note)} stroke="white" stroke-width="2" />
 					{/if}
 				{/each}
 			</g>
@@ -145,7 +145,7 @@
 			{@const touch = note.kind.startsWith('touch')}
 			{@const hit = time >= note.time}
 			{@const holding = note.duration > 0 && hit && time < note.time + note.duration}
-			<g data-kind={note.kind} data-time={note.time} data-position={note.position} data-height={lift} opacity={depthOpacity(target) * (hit && !holding ? clamp(1 - (time - note.time) / .18) : 1)}>
+			<g data-kind={note.kind} data-time={note.time} data-position={note.position} data-height={lift} opacity={hit && !holding ? clamp(1 - (time - note.time) / .18) : timeOpacity(note.time - time, approach(note))}>
 				{#if note.duration > 0}
 					<line class="hold-body" x1={head.x} y1={head.y} x2={tail.x} y2={tail.y} stroke={noteColor(note)} stroke-width="14" opacity=".45" />
 					<g transform={plane(height(note.time + note.duration, note))}>

@@ -8,7 +8,8 @@ const centerY = (sceneHeight: number) => sceneHeight - 180;
 export const dropDistance = (sceneHeight = 720) => sceneHeight - 180 + 254 * scaleY + 24;
 export const planeTransform = (height = 0, sceneHeight = 720) => `matrix(${scaleX} 0 0 ${scaleY} ${300 - 300 * scaleX} ${centerY(sceneHeight) - 300 * scaleY - height})`;
 export const fallHeight = (at: number, time: number, approach: number, sceneHeight = 720) => Math.max(0, (at - time) / approach * dropDistance(sceneHeight));
-export const depthOpacity = (point: Point) => point.y < 300 ? .45 : 1;
+// Notes fade in as their hit nears, matching the game view, so the next one to press stands out.
+export const timeOpacity = (remaining: number, approach: number) => .35 + .65 * clamp(1 - remaining / approach);
 
 export function project(point: Point, height = 0, sceneHeight = 720): Point {
 	return { x: 300 + scaleX * (point.x - 300), y: centerY(sceneHeight) + scaleY * (point.y - 300) - height };
