@@ -90,10 +90,13 @@ test('collapsible layout, mobile overlay, tabs and playback', { timeout: 30000 }
 		};
 		const selectedSpeeds = (id = 'game') => evaluate(`[Number(document.getElementById('${id}-note-speed').value), Number(document.getElementById('${id}-touch-speed').value)]`);
 		const reload = async () => { await cdp('Page.reload'); await sleep(1000); };
-		assert.deepEqual(await selectedSpeeds(), [6, 6], 'both speeds default to 6');
+		assert.deepEqual(await selectedSpeeds(), [6, 6], 'game speeds default to 6');
+		await showViews('game', 'flat', 'isometric');
+		for (const id of ['flat', 'isometric']) assert.deepEqual(await selectedSpeeds(id), [2, 2], 'flat and isometric speeds default to 2');
+		await showViews('game');
 		await setValue('#game-note-speed', 6.25);
 		await setValue('#game-touch-speed', 7.5);
-		assert.deepEqual(await evaluate('JSON.parse(localStorage.getItem("maichart.speeds"))'), { game: { note: 6.25, touch: 7.5 }, flat: { note: 6, touch: 6 }, isometric: { note: 6, touch: 6 } });
+		assert.deepEqual(await evaluate('JSON.parse(localStorage.getItem("maichart.speeds"))'), { game: { note: 6.25, touch: 7.5 }, flat: { note: 2, touch: 2 }, isometric: { note: 2, touch: 2 } });
 		await reload();
 		assert.deepEqual(await selectedSpeeds(), [6.25, 7.5], 'saved speeds survive a reload');
 		await showViews('game', 'flat', 'isometric');

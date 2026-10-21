@@ -25,8 +25,8 @@
 	let activeViews = $state<ViewId[]>(['game']);
 	let viewSpeeds = $state({
 		game: { note: 6, touch: 6 },
-		flat: { note: 6, touch: 6 },
-		isometric: { note: 6, touch: 6 }
+		flat: { note: 2, touch: 2 },
+		isometric: { note: 2, touch: 2 }
 	});
 	let speedsLoaded = $state(false);
 	const speedKinds = [['note', '노트'], ['touch', '터치']] as const;
