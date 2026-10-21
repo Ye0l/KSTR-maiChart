@@ -11,25 +11,27 @@ export const defaultTrail = 4;
 export type TrailUnit = 'notes' | 'beats';
 export const trailUnits: [TrailUnit, string][] = [['notes', '노트'], ['beats', '비트']];
 
+// A SLIDE with per-segment timings is split into parts; only the part that finishes the chain is judged.
+export function finishesChain(note: DisplayNote, notes: DisplayNote[]) {
+	const end = note.time + note.wait + note.duration;
+	const button = String(note.segments.at(-1)!.end);
+	return !notes.some((next) => next.kind === 'slide' && next !== note && next.wait === 0 && next.position === button && Math.abs(next.time - end) < 1e-6);
+}
+
 // Moments a button must be down for a perfect: TAP, HOLD start, star head, and where each SLIDE finishes.
 export function pressMoments(notes: DisplayNote[]): Press[] {
-	const end = (note: DisplayNote) => note.time + note.wait + note.duration;
-	const near = (a: number, b: number) => Math.abs(a - b) < 1e-6;
 	const presses: Press[] = [];
 	for (const note of notes) {
 		if (note.kind === 'tap' || note.kind === 'hold' || note.kind === 'star') {
 			presses.push({ time: note.time, button: note.position, color: noteColor(note) });
-		} else if (note.kind === 'slide') {
-			const button = String(note.segments.at(-1)!.end);
-			// A SLIDE with per-segment timings is split into parts; only the last part's end is judged.
-			const continued = notes.some((next) => next.kind === 'slide' && next !== note && next.wait === 0 && next.position === button && near(next.time, end(note)));
-			if (!continued) presses.push({ time: end(note), button, color: noteColor(note) });
+		} else if (note.kind === 'slide' && finishesChain(note, notes)) {
+			presses.push({ time: note.time + note.wait + note.duration, button: String(note.segments.at(-1)!.end), color: noteColor(note) });
 		}
 	}
 	return presses.sort((a, b) => a.time - b.time);
 }
 
-const beatAt = (tempo: { time: number; bpm: number }[], at: number) => 60 / (tempo.findLast((entry) => entry.time <= at) ?? tempo[0]).bpm;
+export const beatAt = (tempo: { time: number; bpm: number }[], at: number) => 60 / (tempo.findLast((entry) => entry.time <= at) ?? tempo[0]).bpm;
 
 // The newest press on each button, lingering for `trail` beats or for the last `trail` press moments; -1 shows nothing.
 // Counting notes keeps the afterimage uneven on purpose: a short one means the hand had to move fast.

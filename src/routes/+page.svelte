@@ -6,6 +6,8 @@
 	import SensorLayout from '#lib/SensorLayout.svelte';
 	import FlatView from '#lib/FlatView.svelte';
 	import IsometricView from '#lib/IsometricView.svelte';
+	import SliceView from '#lib/SliceView.svelte';
+	import { defaultSliceCount, sliceCounts } from '#lib/slices.ts';
 	import { markSimultaneous, noteColor as color } from '#lib/presentation.ts';
 	import { createTicker } from '#lib/ticks.ts';
 	import { defaultTrail, pressMarks, pressMoments, trailOptions, trailUnits, type TrailUnit } from '#lib/press.ts';
@@ -21,9 +23,12 @@
 	let playing = $state(false);
 	let time = $state(0);
 	let rate = $state(1);
-	type ViewId = 'game' | 'flat' | 'isometric';
-	const viewLabels = { game: '게임', flat: '평면', isometric: 'Isometric' };
-	const viewIds: ViewId[] = ['game', 'flat', 'isometric'];
+	type ViewId = 'game' | 'flat' | 'isometric' | 'slice';
+	// The time slice view steps by note instants, so it has no approach speed.
+	type SpeedView = Exclude<ViewId, 'slice'>;
+	const viewLabels = { game: '게임', flat: '평면', isometric: 'Isometric', slice: '시간 단면' };
+	const viewIds: ViewId[] = ['game', 'flat', 'isometric', 'slice'];
+	const speedViews: SpeedView[] = ['game', 'flat', 'isometric'];
 	let activeViews = $state<ViewId[]>(['game']);
 	let viewSpeeds = $state({
 		game: { note: 6, touch: 6 },
@@ -31,6 +36,7 @@
 		isometric: { note: 2, touch: 2 }
 	});
 	let speedsLoaded = $state(false);
+	let sliceCount = $state(defaultSliceCount);
 	// How long a press highlight lingers, in notes or beats; -1 turns it off, 0 keeps only the hit flash.
 	let pressTrail = $state(defaultTrail);
 	let pressTrailUnit = $state<TrailUnit>('notes');
@@ -215,6 +221,7 @@
 			localStorage.setItem('maichart.pressTrail', String(pressTrail));
 			localStorage.setItem('maichart.pressTrailUnit', pressTrailUnit);
 			localStorage.setItem('maichart.ticks', String(ticks));
+			localStorage.setItem('maichart.sliceCount', String(sliceCount));
 		} catch {
 			// Storage may be blocked; keep the current session usable.
 		}
@@ -223,7 +230,7 @@
 	onMount(() => {
 		try {
 			const saved = JSON.parse(localStorage.getItem('maichart.speeds') ?? '{}');
-			for (const id of viewIds) {
+			for (const id of speedViews) {
 				// Preserve the previous shared settings when upgrading to per-view speeds.
 				const settings = saved?.[id] ?? saved;
 				if (speeds.includes(settings?.note)) viewSpeeds[id].note = settings.note;
@@ -234,6 +241,8 @@
 			const unit = localStorage.getItem('maichart.pressTrailUnit');
 			if (trailUnits.some(([value]) => value === unit)) pressTrailUnit = unit as TrailUnit;
 			if (localStorage.getItem('maichart.ticks') === 'false') ticks = false;
+			const slices = Number(localStorage.getItem('maichart.sliceCount'));
+			if (sliceCounts.includes(slices)) sliceCount = slices;
 		} catch {
 			// Invalid or inaccessible storage falls back to the defaults.
 		}
@@ -266,7 +275,7 @@
 		return () => cancelAnimationFrame(frame);
 	});
 
-	function stepSpeed(id: ViewId, kind: 'note' | 'touch', delta: number) {
+	function stepSpeed(id: SpeedView, kind: 'note' | 'touch', delta: number) {
 		viewSpeeds[id][kind] = Math.min(10, Math.max(1, viewSpeeds[id][kind] + delta));
 	}
 
@@ -311,7 +320,7 @@
 		</div>
 		<div class="view-switch" role="group" aria-label="뷰 형태">
 			{#each viewIds as id}
-				<button id={`view-${id}`} aria-pressed={activeViews.includes(id)} onclick={() => toggleView(id)}>{viewLabels[id]}{id !== 'isometric' ? ' 뷰' : ''}</button>
+				<button id={`view-${id}`} aria-pressed={activeViews.includes(id)} onclick={() => toggleView(id)}>{viewLabels[id]}{id === 'game' || id === 'flat' ? ' 뷰' : ''}</button>
 			{/each}
 		</div>
 	</nav>
@@ -462,6 +471,9 @@
 			{#if id === 'flat'}
 				<FlatView notes={displayNotes} {time} {marks} noteSpeed={viewSpeeds.flat.note} touchSpeed={viewSpeeds.flat.touch} tempo={chart.tempo} />
 			{/if}
+			{#if id === 'slice'}
+				<SliceView notes={prepared} {time} tempo={chart.tempo} count={sliceCount} />
+			{/if}
 			{#if id === 'isometric'}
 				<IsometricView notes={prepared} {time} {marks} noteSpeed={viewSpeeds.isometric.note} touchSpeed={viewSpeeds.isometric.touch} tempo={chart.tempo} />
 			{/if}
@@ -542,6 +554,14 @@
 				{#each activeViews as id (id)}
 					<fieldset class="view-speeds">
 						<legend>{viewLabels[id]}</legend>
+						{#if id === 'slice'}
+							<div class="stepper">
+								<label for="slice-count">단면 수</label>
+								<button aria-label="단면 줄이기" disabled={sliceCount <= sliceCounts[0]} onclick={() => sliceCount--}>−</button>
+								<select id="slice-count" bind:value={sliceCount}>{#each sliceCounts as option}<option value={option}>{option}</option>{/each}</select>
+								<button aria-label="단면 늘리기" disabled={sliceCount >= sliceCounts.at(-1)!} onclick={() => sliceCount++}>+</button>
+							</div>
+						{:else}
 						{#each speedKinds as [kind, label]}
 							<div class="stepper">
 								<label for={`${id}-${kind}-speed`}>{label}</label>
@@ -550,6 +570,7 @@
 								<button aria-label={`${viewLabels[id]} ${label} 배속 높이기`} disabled={viewSpeeds[id][kind] >= 10} onclick={() => stepSpeed(id, kind, .25)}>+</button>
 							</div>
 						{/each}
+						{/if}
 					</fieldset>
 				{:else}
 					<p class="hint">표시 중인 뷰가 없습니다.</p>

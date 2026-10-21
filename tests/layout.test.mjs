@@ -291,6 +291,21 @@ test('collapsible layout, mobile overlay, tabs and playback', { timeout: 30000 }
 		for (const id of ['game', 'isometric', 'flat']) await click('#view-' + id);
 		assert.equal(await evaluate('document.querySelectorAll("[data-panel]").length'), 0);
 		assert.match(await evaluate('document.querySelector("#chart-stage").textContent'), /표시할 뷰/);
+		await showViews('slice');
+		await setValue('.seek', firstTap.time);
+		const slices = () => evaluate('Array.from(document.querySelectorAll("svg[data-view=slice] .slice"), el => ({ time: Number(el.dataset.time), slot: Number(el.dataset.slot) }))');
+		assert.equal(await evaluate('document.querySelector("svg[data-view=slice]").outerHTML.includes("NaN")'), false);
+		const hitSlots = (await slices()).filter(slice => Math.abs(slice.time - firstTap.time) < 1e-6).map(slice => slice.slot);
+		assert.ok(hitSlots.length === 1 && Math.abs(hitSlots[0]) < .05, 'the instant being hit sits on the bottom slot');
+		assert.ok(await evaluate(`!!document.querySelector('svg[data-view=slice] .slice[data-time="${firstTap.time}"] .slice-note[data-position="${firstTap.position}"]')`), 'the bottom slice shows the note to hit');
+		assert.equal(await evaluate('document.querySelector("#slice-count").value'), '5', 'five slices by default');
+		assert.equal((await slices()).filter(slice => slice.slot >= 0).length, 5);
+		await setValue('#slice-count', 4);
+		assert.equal((await slices()).filter(slice => slice.slot >= 0).length, 4);
+		assert.equal(await evaluate('localStorage.getItem("maichart.sliceCount")'), '4', 'slice count is saved');
+		await setValue('#slice-count', 5);
+		await setValue('.seek', firstTap.time - .05);
+		assert.ok((await slices()).every(slice => slice.slot > 0), 'slices approach the bottom slot before their instant');
 		await showViews('game');
 		await evaluate('window.__ticks = 0; const create = AudioContext.prototype.createOscillator; AudioContext.prototype.createOscillator = function () { window.__ticks++; return create.call(this); }; 1');
 		const playTicks = async () => {
