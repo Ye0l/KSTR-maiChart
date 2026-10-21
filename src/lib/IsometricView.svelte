@@ -94,8 +94,9 @@
 		{#each leads as note}
 			{@const target = position(note.position)}
 			{@const base = projectPoint(target)}
-			{@const head = projectPoint(target, height(note.time, note))}
-			<line class="lead" x1={base.x} y1={base.y} x2={head.x} y2={head.y} stroke={noteColor(note)} stroke-width="2" opacity=".5" />
+			{@const lift = height(note.time, note)}
+			{@const head = projectPoint(target, lift)}
+			<line class="lead" x1={base.x} y1={base.y} x2={head.x} y2={head.y} stroke={noteColor(note)} stroke-width="2" opacity={.5 * timeOpacity(lift, viewHeight)} />
 		{/each}
 		{#each rungs as rung}
 			<circle class="beat-rung" cx="300" cy="300" r="254" transform={plane(rung.lift)} fill="none" stroke="#9fb0d0" stroke-width="1" vector-effect="non-scaling-stroke" opacity={rung.downbeat ? .24 : .1} pointer-events="none" />
