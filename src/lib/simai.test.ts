@@ -32,7 +32,7 @@ test('sector emphasis peaks at the note and fades to nothing at the neighbouring
 
 test('isometric rear four lanes are lighter while front lanes and center stay opaque', () => {
 	for (let lane = 1; lane <= 8; lane++) {
-		assert.equal(depthOpacity(position(String(lane))), [1, 6, 7, 8].includes(lane) ? .45 : 1);
+		assert.equal(depthOpacity(position(String(lane))), [1, 2, 7, 8].includes(lane) ? .45 : 1);
 	}
 	assert.equal(depthOpacity(position('C')), 1);
 });

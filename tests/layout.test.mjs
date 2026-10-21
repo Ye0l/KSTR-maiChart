@@ -202,7 +202,7 @@ test('collapsible layout, mobile overlay, tabs and playback', { timeout: 30000 }
 		const high = Number(await attr(noteSelector(firstTap), 'data-height'));
 		await setValue('.seek', firstTap.time - .2);
 		assert.ok(Number(await attr(noteSelector(firstTap), 'data-height')) < high, 'isometric notes descend vertically');
-		assert.equal(Number(await attr(noteSelector(firstTap), 'opacity')), [1, 6, 7, 8].includes(Number(firstTap.position)) ? .45 : 1, 'rear notes are dimmed in the rendered scene');
+		assert.equal(Number(await attr(noteSelector(firstTap), 'opacity')), [1, 2, 7, 8].includes(Number(firstTap.position)) ? .45 : 1, 'rear notes are dimmed in the rendered scene');
 		const lift = await attr(noteSelector(firstTap), 'data-height');
 		const ring = `svg .timing-ring[data-height="${lift}"]`;
 		assert.equal(await attr(ring, 'transform'), await attr(`${noteSelector(firstTap)} .note-plane`, 'transform'), 'full-circle guide follows the note plane');
