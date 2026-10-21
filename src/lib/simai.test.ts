@@ -6,9 +6,29 @@ import { parseChart, readMaidata } from './simai.ts';
 import { distance, position, slidePath, trace } from './geometry.ts';
 import { sensorPolygon } from './sensor-layout.ts';
 import { markSimultaneous, noteColor } from './presentation.ts';
-import { depthOpacity, dropDistance, fallHeight, project, projectSlide } from './isometric.ts';
+import { beatsBetween, depthOpacity, dropDistance, fallHeight, project, projectSlide, sectorArc } from './isometric.ts';
 
 const close = (actual: number, expected: number) => assert.ok(Math.abs(actual - expected) < 1e-8, `${actual} != ${expected}`);
+
+test('tempo records BPM changes and the beat grid restarts at each change', () => {
+	const chart = parseChart('(120){4}1,(120)2,(60)3,4,E', 120, .5);
+	assert.deepEqual(chart.tempo, [{ time: .5, bpm: 120 }, { time: 1.5, bpm: 60 }]);
+	assert.deepEqual(beatsBetween(chart.tempo, .5, 3.5).map(beat => beat.time), [1, 1.5, 2.5, 3.5]);
+	assert.deepEqual(beatsBetween(chart.tempo, 0, 2).filter(beat => beat.downbeat).map(beat => beat.time), [.5, 1.5]);
+});
+
+test('sector emphasis peaks at the note and fades to nothing at the neighbouring buttons', () => {
+	const pieces = sectorArc(position('3'));
+	assert.equal(pieces.length, 12);
+	assert.ok(pieces[5].weight > .9 && pieces[6].weight > .9);
+	assert.ok(pieces[0].weight < .1 && pieces[11].weight < .1);
+	const ends = (d: string) => d.match(/-?[\d.]+,-?[\d.]+/g)!.map(pair => pair.split(',').map(Number));
+	const [start] = ends(pieces[0].d);
+	const end = ends(pieces[11].d).at(-1)!;
+	for (const [x, y] of [start, end]) close(Math.hypot(x - 300, y - 300), 254);
+	assert.ok(Math.abs(Math.atan2(start[1] - 300, start[0] - 300) - Math.atan2(position('2').y - 300, position('2').x - 300)) < 1e-3, 'sector ends at button 2');
+	assert.ok(Math.abs(Math.atan2(end[1] - 300, end[0] - 300) - Math.atan2(position('4').y - 300, position('4').x - 300)) < 1e-3, 'sector ends at button 4');
+});
 
 test('isometric rear four lanes are lighter while front lanes and center stay opaque', () => {
 	for (let lane = 1; lane <= 8; lane++) {

@@ -1,13 +1,16 @@
 <script lang="ts">
 	import { sensorCenter, sensorPoint, sensorPolygon, sensorScale } from './sensor-layout.ts';
 
+	// Quiet mode keeps the outlines as faint context so notes stay the brightest layer.
+	let { quiet = false }: { quiet?: boolean } = $props();
+
 	const indices = Array.from({ length: 8 }, (_, i) => i + 1);
 	const families = ['B', 'E'] as const;
 	const points = (family: 'B' | 'E', index: number) => sensorPolygon(family, index).map(({ x, y }) => `${x},${y}`).join(' ');
 </script>
 
 <!-- Display outlines traced from the skin, not calibrated hardware hitboxes. -->
-<g class="sensors" aria-hidden="true" pointer-events="none">
+<g class="sensors" class:quiet aria-hidden="true" pointer-events="none">
 	{#each indices as n}
 		{@const a = sensorPoint(162, -391, n)}
 		{@const d = sensorPoint(0, -440, n)}
@@ -34,5 +37,7 @@
 <style>
 	.sensors { fill: #121824; stroke: #3c465a; stroke-width: 1.2; stroke-linejoin: round; }
 	.outer { fill: none; stroke-dasharray: 2 5; stroke-width: 2; }
+	.quiet { fill: #0f141f; stroke: #262e3f; }
+	.quiet text { display: none; }
 	text { fill: #707e97; stroke: none; font: 600 13px system-ui, sans-serif; text-anchor: middle; dominant-baseline: central; }
 </style>

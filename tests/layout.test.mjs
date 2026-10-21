@@ -296,6 +296,24 @@ test('collapsible layout, mobile overlay, tabs and playback', { timeout: 30000 }
 		assert.equal(Number(await evaluate('document.querySelector(".seek").value')), 0, 'native scroll clamps to chart start');
 		await wheel(1000000);
 		assert.ok(Math.abs(Number(await evaluate('document.querySelector(".seek").value')) - Number(await evaluate('document.querySelector(".seek").max'))) < .01, 'native scroll clamps to chart end');
+		const tap = async () => {
+			for (const type of ['mousePressed', 'mouseReleased']) await cdp('Input.dispatchMouseEvent', { type, x: scrollBox.x + scrollBox.width / 2, y: scrollBox.y + scrollBox.height / 2, button: 'left', clickCount: 1 });
+			await sleep(100);
+		};
+		await setValue('.seek', 10);
+		await tap();
+		assert.equal(await evaluate('document.querySelector(".controls button").textContent'), '일시정지', 'tapping the stage starts playback');
+		await tap();
+		assert.equal(await evaluate('document.querySelector(".controls button").textContent'), '재생', 'tapping the stage again pauses');
+		await tap();
+		const center = { x: scrollBox.x + scrollBox.width / 2, y: scrollBox.y + scrollBox.height / 2 };
+		await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', ...center, button: 'left', clickCount: 1 });
+		for (let step = 1; step <= 4; step++) await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: center.x, y: center.y - step * 60, button: 'left', buttons: 1 });
+		await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: center.x, y: center.y - 240, button: 'left', clickCount: 1 });
+		await sleep(150);
+		assert.equal(await evaluate('document.querySelector(".controls button").textContent'), '재생', 'dragging pauses and is not a tap');
+		const afterDrag = Number(await evaluate('document.querySelector(".seek").value'));
+		assert.ok(afterDrag > 10.9 && afterDrag < 11.3, 'an upward mouse drag of 240px seeks one second forward');
 		for (const width of [360, 390, 720]) {
 			await resize(width, 844);
 			await sleep(50);

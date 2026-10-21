@@ -89,3 +89,30 @@ export const star = (point: Point, radius = 17) => Array.from({ length: 10 }, (_
 	const r = i % 2 ? radius * .45 : radius;
 	return `${point.x + Math.cos(angle) * r},${point.y + Math.sin(angle) * r}`;
 }).join(' ');
+
+// Arrows sit at fixed arc-length spots so they stay put and vanish as the star passes them.
+const chevronCache = new WeakMap<Point[], { at: number; x: number; y: number; angle: number }[]>();
+export function chevrons(points: Point[], progress: number, spacing = 24) {
+	let all = chevronCache.get(points);
+	if (!all) chevronCache.set(points, all = placeChevrons(points, spacing));
+	const consumed = clamp(progress);
+	return all.filter((arrow) => arrow.at >= consumed);
+}
+
+function placeChevrons(points: Point[], spacing: number) {
+	const lengths = points.slice(1).map((point, i) => distance(points[i], point));
+	const total = lengths.reduce((sum, value) => sum + value, 0);
+	const count = Math.max(1, Math.floor(total / spacing));
+	const arrows: { at: number; x: number; y: number; angle: number }[] = [];
+	let segment = 0;
+	let before = 0;
+	for (let n = 0; n < count; n++) {
+		const at = total * (n + .5) / count;
+		while (segment < lengths.length - 1 && before + lengths[segment] < at) before += lengths[segment++];
+		const a = points[segment];
+		const b = points[segment + 1];
+		const point = mix(a, b, lengths[segment] ? (at - before) / lengths[segment] : 0);
+		arrows.push({ at: at / total, ...point, angle: Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI });
+	}
+	return arrows;
+}

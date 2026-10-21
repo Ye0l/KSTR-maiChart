@@ -107,13 +107,19 @@ export function parseChart(source: string, initialBpm = 120, offset = 0) {
 	let bpm = Number.isFinite(initialBpm) && initialBpm > 0 ? initialBpm : 120;
 	let division = 4;
 	let time = Number.isFinite(offset) ? offset : 0;
+	const tempo = [{ time, bpm }];
 	const clean = source.replace(/\/\/[^\r\n]*/g, '').replace(/\s/g, '');
 	for (let cell of clean.split(',')) {
 		try {
 			while (/^[({]/.test(cell)) {
 				const directive = cell.match(/^(?:\(([^)]+)\)|\{([^}]+)\})/);
 				if (!directive) throw new Error(`불완전한 지시문: ${cell}`);
-				if (directive[1]) bpm = positive(directive[1]);
+				if (directive[1]) {
+					bpm = positive(directive[1]);
+					// Keep one entry per instant so a restated BPM does not shift the beat grid.
+					if (tempo.at(-1)!.time === time) tempo.at(-1)!.bpm = bpm;
+					else if (tempo.at(-1)!.bpm !== bpm) tempo.push({ time, bpm });
+				}
 				else division = positive(directive[2]);
 				cell = cell.slice(directive[0].length);
 			}
@@ -135,5 +141,5 @@ export function parseChart(source: string, initialBpm = 120, offset = 0) {
 	}
 	notes.sort((a, b) => a.time - b.time);
 	const duration = notes.reduce((end, note) => Math.max(end, note.time + note.wait + note.duration), time);
-	return { notes, warnings: [...warnings], duration: Math.max(1, duration + 1) };
+	return { notes, warnings: [...warnings], duration: Math.max(1, duration + 1), tempo };
 }

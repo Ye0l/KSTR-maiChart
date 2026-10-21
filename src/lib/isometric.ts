@@ -26,3 +26,34 @@ export function projectSlide(points: Point[], start: number, duration: number, t
 		return project(point, fallHeight(at, time, approach, sceneHeight), sceneHeight);
 	});
 }
+
+// Beat onsets in (from, to]; each BPM section restarts its grid at the change, as the chart does.
+export function beatsBetween(tempo: { time: number; bpm: number }[], from: number, to: number) {
+	const beats: { time: number; downbeat: boolean }[] = [];
+	tempo.forEach(({ time: start, bpm }, index) => {
+		const end = Math.min(to, tempo[index + 1]?.time ?? Infinity);
+		const beat = 60 / bpm;
+		for (let n = Math.max(0, Math.floor((from - start) / beat)); start + n * beat <= end; n++) {
+			const at = start + n * beat;
+			if (at > from && at < (tempo[index + 1]?.time ?? Infinity)) beats.push({ time: at, downbeat: n % 4 === 0 });
+		}
+	});
+	return beats;
+}
+
+// Arc pieces spanning one button sector (±45°) on each side of a point, weighted 1 at the point and 0 at the neighbours.
+const sectorArcs = new Map<string, { d: string; weight: number }[]>();
+export function sectorArc(point: Point, pieces = 12) {
+	const key = `${point.x},${point.y},${pieces}`;
+	const cached = sectorArcs.get(key);
+	if (cached) return cached;
+	const angle = Math.atan2(point.y - 300, point.x - 300);
+	const at = (theta: number) => `${300 + 254 * Math.cos(theta)},${300 + 254 * Math.sin(theta)}`;
+	const arcs = Array.from({ length: pieces }, (_, i) => {
+		const a = angle + (i / pieces * 2 - 1) * Math.PI / 4;
+		const b = angle + ((i + 1) / pieces * 2 - 1) * Math.PI / 4;
+		return { d: `M${at(a)} A254,254 0 0 1 ${at(b)}`, weight: 1 - Math.abs((i + .5) / pieces * 2 - 1) };
+	});
+	sectorArcs.set(key, arcs);
+	return arcs;
+}
