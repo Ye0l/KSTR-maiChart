@@ -27,7 +27,8 @@
 		return () => observer.disconnect();
 	});
 	const approach = (note: DisplayNote) => 2 / (note.kind.startsWith('touch') ? touchSpeed : noteSpeed);
-	const x = (id: string) => 40 + ((id.startsWith('C') ? 4.5 : Number(id.at(-1))) - .5) * 65;
+	// Lane 1 sits on the right as in game, where button 1 is just right of 12 o'clock.
+	const x = (id: string) => 40 + (8.5 - (id.startsWith('C') ? 4.5 : Number(id.at(-1)))) * 65;
 	const y = (at: number, note: DisplayNote) => hitY - (at - time) / approach(note) * (hitY - top);
 	// Beat lines fall at the button-note rate so they measure the notes around them.
 	const beats = $derived(beatsBetween(tempo, time, time + 2 / noteSpeed).map((beat) => ({ ...beat, y: hitY - (beat.time - time) / (2 / noteSpeed) * (hitY - top) })));

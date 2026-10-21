@@ -154,6 +154,7 @@ test('collapsible layout, mobile overlay, tabs and playback', { timeout: 30000 }
 		await setValue('#flat-note-speed', 1);
 		await setValue('#flat-touch-speed', 1);
 		assert.deepEqual(await evaluate('Array.from(document.querySelectorAll("[data-lane]"), el => Number(el.textContent))'), [1, 2, 3, 4, 5, 6, 7, 8]);
+		assert.deepEqual(await evaluate('Array.from(document.querySelectorAll("[data-lane]")).sort((a, b) => a.getAttribute("x") - b.getAttribute("x")).map(el => Number(el.textContent))'), [8, 7, 6, 5, 4, 3, 2, 1], 'flat lanes run 8 to 1 from the left');
 		await checkFlatText();
 		const noteSelector = (note) => `svg [data-kind="${note.kind}"][data-time="${note.time}"][data-position="${note.position}"]`;
 		const attr = (selector, name) => evaluate(`document.querySelector(${JSON.stringify(selector)}).getAttribute(${JSON.stringify(name)})`);
@@ -171,7 +172,7 @@ test('collapsible layout, mobile overlay, tabs and playback', { timeout: 30000 }
 		const beforeY = Number(await attr(`${noteSelector(firstTap)} .note-head`, 'y'));
 		await setValue('.seek', firstTap.time - .2);
 		assert.ok(Number(await attr(`${noteSelector(firstTap)} .note-head`, 'y')) > beforeY, 'flat notes fall downward');
-		assert.equal(Number(await attr(`${noteSelector(firstTap)} .note-head`, 'x')), 40 + (Number(firstTap.position) - .5) * 65 - 25);
+		assert.equal(Number(await attr(`${noteSelector(firstTap)} .note-head`, 'x')), 40 + (8.5 - Number(firstTap.position)) * 65 - 25);
 		const displayNotes = markSimultaneous(notes);
 		const examples = [
 			[displayNotes.find(note => note.kind === 'hold' && !note.simultaneous && !note.break), '#ff68b7'],
@@ -192,8 +193,8 @@ test('collapsible layout, mobile overlay, tabs and playback', { timeout: 30000 }
 		await setValue('.seek', slide.time + slide.wait + slide.duration / 2);
 		const connection = (await attr(`${noteSelector(slide)} polyline`, 'points')).split(' ').map(point => point.split(',').map(Number));
 		assert.equal(connection.length, 3);
-		assert.equal(connection[0][0], 40 + (slide.segments[0].start - .5) * 65);
-		assert.equal(connection[2][0], 40 + (slide.segments.at(-1).end - .5) * 65);
+		assert.equal(connection[0][0], 40 + (8.5 - slide.segments[0].start) * 65);
+		assert.equal(connection[2][0], 40 + (8.5 - slide.segments.at(-1).end) * 65);
 		assert.equal(await evaluate('document.querySelector("svg").outerHTML.includes("NaN")'), false);
 		const isoTime = await evaluate('document.querySelector(".seek").value');
 		await showViews('isometric');
