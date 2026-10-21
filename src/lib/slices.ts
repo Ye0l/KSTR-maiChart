@@ -1,4 +1,4 @@
-import type { Point } from './geometry.ts';
+import { mix, type Point } from './geometry.ts';
 import { noteColor, type DisplayNote } from './presentation.ts';
 import { finishesChain } from './press.ts';
 
@@ -78,6 +78,24 @@ export function sliceSlot(index: number, tempo: Tempo, time: number, length: num
 	return index - current + (1 - settle) ** 2;
 }
 
+// Each slice is a still of the game screen at the moment it opens: notes travel in from the centre, so the first
+// one in the window sits on the ring and later ones sit nearer the centre in proportion to their time.
+const centre = { x: 300, y: 300 };
+// Share of the radius at the window's end; the game spawns notes this far out from the centre too.
+export const innerRadius = .18;
+export const sliceDepth = (instant: number, start: number, end: number) => Math.max(0, Math.min(1, (instant - start) / (end - start)));
+export const radial = (point: Point, depth: number) => mix(centre, point, innerRadius + (1 - innerRadius) * (1 - depth));
+
+export function sliceWindow(tempo: Tempo, index: number, length: number) {
+	return { start: timeAtBeat(tempo, index * length), end: timeAtBeat(tempo, (index + 1) * length) };
+}
+
+// Guide rings inside a slice: every sixteenth for slices up to a beat, every beat for longer ones.
+export function guideDepths(length: number) {
+	const step = length <= 1 ? .25 : 1;
+	return Array.from({ length: Math.round(length / step) - 1 }, (_, i) => (i + 1) * step / length);
+}
+
 // Disc size and centre for a (fractional) slot; slot 0 is the bottom.
 export function slotFrame(slot: number, sceneHeight: number, count: number) {
 	const step = 1 + shrink;
@@ -97,12 +115,12 @@ export function sliceLabel(index: number, length: number) {
 }
 
 // Each note of an instant joined to the nearest note of the instant before: the path a hand travels.
-export function handPath(instants: Instant[], at: (id: string) => Point) {
+export function handPath(instants: Instant[], at: (item: SliceItem, instant: Instant) => Point) {
 	const lines: { from: Point; to: Point; order: number }[] = [];
 	for (let i = 1; i < instants.length; i++) {
-		const previous = instants[i - 1].items.map((item) => at(item.position));
+		const previous = instants[i - 1].items.map((item) => at(item, instants[i - 1]));
 		for (const item of instants[i].items) {
-			const to = at(item.position);
+			const to = at(item, instants[i]);
 			const from = previous.reduce((best, point) => Math.hypot(point.x - to.x, point.y - to.y) < Math.hypot(best.x - to.x, best.y - to.y) ? point : best);
 			if (from.x !== to.x || from.y !== to.y) lines.push({ from, to, order: i });
 		}

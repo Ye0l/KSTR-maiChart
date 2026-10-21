@@ -13,8 +13,13 @@
 	import { defaultTrail, pressMarks, pressMoments, trailOptions, trailUnits, type TrailUnit } from '#lib/press.ts';
 
 	let { data }: { data: PageData } = $props();
-	const names = ['EASY', 'BASIC', 'ADVANCED', 'EXPERT', 'MASTER', 'Re:MASTER'];
-	const difficultyColors = ['#4ea6ff', '#4cd964', '#ffc23d', '#ff6b81', '#b77cff', '#e9d4ff'];
+	const names = ['EASY', 'BASIC', 'ADVANCED', 'EXPERT', 'MASTER', 'Re:MASTER', 'UTAGE'];
+	const difficultyColors = ['#4ea6ff', '#4cd964', '#ffc23d', '#ff6b81', '#b77cff', '#e9d4ff', '#ff7ad9'];
+	// Utage songs file their charts under slot 7, or under 2 and 3 for paired charts; none of them are BASIC etc.
+	const isUtage = (id: string) => id.startsWith('宴会場/');
+	const difficultyName = (level: string, utage: boolean, levels: string[]) =>
+		utage ? (levels.length > 1 ? `UTAGE ${levels.indexOf(level) + 1}` : 'UTAGE') : names[Number(level) - 1] ?? level;
+	const difficultyColor = (level: string, utage: boolean) => difficultyColors[utage ? 6 : Number(level) - 1];
 	const legend = [
 		['#ff68b7', 'TAP / HOLD'], ['#ffdb4d', '동시입력'], ['#75edb0', 'TOUCH'],
 		['#57dfff', 'SLIDE'], ['#ff9a35', 'BREAK (최우선)'], ['transparent', 'EX (흰 테두리)']
@@ -139,7 +144,8 @@
 	const versionOrder = ['', ' PLUS', ' GreeN', ' GreeN PLUS', ' ORANGE', ' ORANGE PLUS', ' PiNK', ' PiNK PLUS', ' MURASAKi', ' MURASAKi PLUS', ' MiLK', ' MiLK PLUS', ' FiNALE',
 		' DX', ' DX PLUS', ' DX Splash', ' DX Splash PLUS', ' DX UNiVERSE', ' DX UNiVERSE PLUS', ' DX FESTiVAL', ' DX FESTiVAL PLUS', ' DX BUDDiES', ' DX BUDDiES PLUS',
 		' DX PRiSM', ' DX PRiSM PLUS', ' DX CiRCLE', ' DX CiRCLE PLUS'].map((name) => `maimai${name}`);
-	const versionRank = (version: string) => versionOrder.includes(version) ? versionOrder.indexOf(version) : versionOrder.length;
+	// Utage (宴会場) charts are filed apart from the release versions, at the end.
+	const versionRank = (version: string) => version === '宴会場' ? versionOrder.length + 1 : versionOrder.includes(version) ? versionOrder.indexOf(version) : versionOrder.length;
 	const versions = $derived([...new Set(data.songs.map((song) => song.version).filter(Boolean))].sort((a, b) => versionRank(a) - versionRank(b) || a.localeCompare(b)));
 	// Chart constants group the way the game shows them: x.0–x.6 is "x", x.7–x.9 is "x+"; a trailing "?" marks an estimate.
 	const levelLabel = (value: string) => {
@@ -319,7 +325,7 @@
 		<div class="now-playing">
 			<span class="now-title">{fields.title}</span>
 			{#if activeDifficulty}
-				<span class="badge" style:--difficulty={difficultyColors[Number(activeDifficulty) - 1]}>{names[Number(activeDifficulty) - 1] ?? activeDifficulty} <b>{fields[`lv_${activeDifficulty}`] || '?'}</b></span>
+				<span class="badge" style:--difficulty={difficultyColor(activeDifficulty, isUtage(data.selected))}>{difficultyName(activeDifficulty, isUtage(data.selected), difficulties)} <b>{fields[`lv_${activeDifficulty}`] || '?'}</b></span>
 			{/if}
 		</div>
 		<div class="view-switch" role="group" aria-label="뷰 형태">
@@ -340,8 +346,8 @@
 			<div id="panel-charts" class="panel-content charts" role="tabpanel" aria-labelledby="tab-charts" hidden={paneTab !== 'charts'}>
 				<div class="difficulties" role="group" aria-label="난이도">
 					{#each difficulties as level}
-						<button class="difficulty" style:--difficulty={difficultyColors[Number(level) - 1]} aria-pressed={level === activeDifficulty} onclick={() => difficulty = level}>
-							<span>{names[Number(level) - 1] ?? level}</span><b>{fields[`lv_${level}`] || '?'}</b>
+						<button class="difficulty" style:--difficulty={difficultyColor(level, isUtage(data.selected))} aria-pressed={level === activeDifficulty} onclick={() => difficulty = level}>
+							<span>{difficultyName(level, isUtage(data.selected), difficulties)}</span><b>{fields[`lv_${level}`] || '?'}</b>
 						</button>
 					{/each}
 				</div>
@@ -370,7 +376,7 @@
 								<span class="song-name">{song.name}</span>
 								<span class="song-meta">{#if song.dx}<b class="dx">DX</b>{/if}{song.number ? `${song.number} · ` : ''}{song.genre}</span>
 								{#if song.matches.length}
-									<span class="song-levels">{#each song.matches as [level, value]}<b style:--difficulty={difficultyColors[Number(level) - 1]}>{names[Number(level) - 1] ?? level} {value}</b>{/each}</span>
+									<span class="song-levels">{#each song.matches as [level, value]}<b style:--difficulty={difficultyColor(level, isUtage(song.id))}>{difficultyName(level, isUtage(song.id), song.levels.map(([slot]) => slot))} {value}</b>{/each}</span>
 								{/if}
 							</a>
 						</li>

@@ -8,7 +8,8 @@ import { sensorPolygon } from './sensor-layout.ts';
 import { markSimultaneous, noteColor } from './presentation.ts';
 import { pressMarks, pressMoments } from './press.ts';
 import { dueTicks } from './ticks.ts';
-import { beatPosition, handPath, shiftTime, sliceIndex, sliceInstants, sliceLabel, sliceSlot, slotFrame, timeAtBeat } from './slices.ts';
+import { listCharts, utageVersion } from './server/charts.ts';
+import { beatPosition, guideDepths, handPath, innerRadius, radial, sliceDepth, sliceWindow, shiftTime, sliceIndex, sliceInstants, sliceLabel, sliceSlot, slotFrame, timeAtBeat } from './slices.ts';
 import { beatsBetween, dropDistance, fallHeight, project, projectSlide, sectorArc, sectorSpan, timeOpacity } from './isometric.ts';
 
 const close = (actual: number, expected: number) => assert.ok(Math.abs(actual - expected) < 1e-8, `${actual} != ${expected}`);
@@ -171,14 +172,38 @@ test('the stack holds still within a slice and steps one slot at each boundary',
 	}
 });
 
+test('inside a slice notes sit from the ring inward in proportion to their time, like a still of the game screen', () => {
+	const tempo = [{ time: 0, bpm: 120 }];
+	const window = sliceWindow(tempo, 2, 1);
+	close(window.start, 1);
+	close(window.end, 1.5);
+	close(sliceDepth(1, window.start, window.end), 0);
+	close(sliceDepth(1.125, window.start, window.end), .25);
+	assert.deepEqual(radial(position('3'), 0), position('3'), 'the first sixteenth is on the ring');
+	const half = radial(position('3'), .5);
+	close(Math.hypot(half.x - 300, half.y - 300), Math.hypot(position('3').x - 300, position('3').y - 300) * (innerRadius + (1 - innerRadius) / 2));
+	assert.deepEqual(guideDepths(1), [.25, .5, .75]);
+	assert.deepEqual(guideDepths(.5), [.5]);
+	assert.deepEqual(guideDepths(4), [.25, .5, .75]);
+});
+
 test('slice labels read as measure.beat and the hand path joins nearest notes in order', () => {
 	assert.equal(sliceLabel(0, 1), '1.1');
 	assert.equal(sliceLabel(6, 1), '2.3');
 	assert.equal(sliceLabel(5, .5), '1.3½');
 	assert.equal(sliceLabel(3, 4), '4.1');
 	const item = (position: string) => ({ position }) as never;
-	const lines = handPath([{ time: 0, items: [item('1'), item('5')] }, { time: 1, items: [item('2')] }, { time: 2, items: [item('2')] }], position);
+	const lines = handPath([{ time: 0, items: [item('1'), item('5')] }, { time: 1, items: [item('2')] }, { time: 2, items: [item('2')] }], ({ position: id }) => position(id));
 	assert.deepEqual(lines.map(line => [line.from, line.to, line.order]), [[position('1'), position('2'), 1]], 'from the nearer of the chord, and no line for a repeat');
+});
+
+test('Utage charts are filed under their own version with their difficulty 7 level', async () => {
+	const songs = await listCharts();
+	const utage = songs.filter(song => song.id.startsWith('宴会場'));
+	assert.ok(utage.length > 0);
+	assert.ok(utage.every(song => song.version === utageVersion && song.levels.length > 0));
+	assert.ok(utage.some(song => song.levels.some(([level]) => level === '7')), 'difficulty 7 levels are read');
+	assert.ok(songs.every(song => song.version !== utageVersion || song.id.startsWith('宴会場')));
 });
 
 test('TAP/HOLD are pink, input chords yellow, and BREAK takes priority', () => {
