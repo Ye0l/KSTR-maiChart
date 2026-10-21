@@ -7,6 +7,7 @@
 	import FlatView from '#lib/FlatView.svelte';
 	import IsometricView from '#lib/IsometricView.svelte';
 	import { markSimultaneous, noteColor as color } from '#lib/presentation.ts';
+	import { createTicker } from '#lib/ticks.ts';
 	import { defaultTrail, pressMarks, pressMoments, trailOptions, trailUnits, type TrailUnit } from '#lib/press.ts';
 
 	let { data }: { data: PageData } = $props();
@@ -33,6 +34,9 @@
 	// How long a press highlight lingers, in notes or beats; -1 turns it off, 0 keeps only the hit flash.
 	let pressTrail = $state(defaultTrail);
 	let pressTrailUnit = $state<TrailUnit>('notes');
+	// A tick at every press moment, so the rhythm can be heard as well as seen.
+	let ticks = $state(true);
+	const ticker = createTicker();
 	const speedKinds = [['note', '노트'], ['touch', '터치']] as const;
 	const speeds = Array.from({ length: 37 }, (_, i) => 1 + i * .25);
 	const approachTime = (note: Note) => 2 / (note.kind.startsWith('touch') ? viewSpeeds.game.touch : viewSpeeds.game.note);
@@ -118,6 +122,7 @@
 		}, []) : []
 	})));
 	const presses = $derived(pressMoments(displayNotes));
+	const tickTimes = $derived(presses.map((press) => press.time));
 	const marks = $derived(pressMarks(presses, time, chart.tempo, pressTrail, pressTrailUnit));
 	const visible = $derived(prepared.filter((note) => note.time - approachTime(note) <= time && time <= note.time + note.wait + note.duration + .18));
 	const songs = $derived(data.songs.map((song) => {
@@ -209,6 +214,7 @@
 			localStorage.setItem('maichart.speeds', JSON.stringify(viewSpeeds));
 			localStorage.setItem('maichart.pressTrail', String(pressTrail));
 			localStorage.setItem('maichart.pressTrailUnit', pressTrailUnit);
+			localStorage.setItem('maichart.ticks', String(ticks));
 		} catch {
 			// Storage may be blocked; keep the current session usable.
 		}
@@ -227,6 +233,7 @@
 			if (trailOptions.includes(trail)) pressTrail = trail;
 			const unit = localStorage.getItem('maichart.pressTrailUnit');
 			if (trailUnits.some(([value]) => value === unit)) pressTrailUnit = unit as TrailUnit;
+			if (localStorage.getItem('maichart.ticks') === 'false') ticks = false;
 		} catch {
 			// Invalid or inaccessible storage falls back to the defaults.
 		}
@@ -263,7 +270,14 @@
 		viewSpeeds[id][kind] = Math.min(10, Math.max(1, viewSpeeds[id][kind] + delta));
 	}
 
+	$effect(() => {
+		if (!ticks || !playing) ticker.stop();
+		else ticker.update(tickTimes, time, rate);
+	});
+	$effect(() => () => ticker.stop());
+
 	function toggle() {
+		ticker.unlock();
 		if (time >= chart.duration) time = 0;
 		playing = !playing;
 	}
@@ -373,7 +387,7 @@
 						<ul>{#each chart.warnings as warning}<li>{warning}</li>{/each}</ul>
 					</details>
 				{/if}
-				<p class="hint">무음 자동 재생 · 슬라이드 경로는 근사 표시<br />플레이 화면에서 휠 또는 상하 스와이프로 탐색</p>
+				<p class="hint">음악 없이 틱 사운드로 자동 재생 · 슬라이드 경로는 근사 표시<br />플레이 화면에서 휠 또는 상하 스와이프로 탐색</p>
 			</div>
 		</aside>
 		<section id="chart-stage" class:split={activeViews.length > 1} style:--view-count={Math.max(1, activeViews.length)} aria-label="플레이 화면">
@@ -513,6 +527,7 @@
 			<div class="controls">
 				<button class="play" title={playing ? '일시정지' : '재생'} onclick={toggle}><span class="icon" class:icon-play={!playing} class:icon-pause={playing}></span><span class="sr-only">{playing ? '일시정지' : '재생'}</span></button>
 				<button class="icon-button" title="처음으로" onclick={() => { time = 0; playing = false; }}><span class="icon icon-restart"></span><span class="sr-only">처음</span></button>
+				<button id="tick-toggle" class="icon-button" title={ticks ? '틱 사운드 끄기' : '틱 사운드 켜기'} aria-pressed={ticks} onclick={() => { ticker.unlock(); ticks = !ticks; }}><span class="icon" class:icon-sound={ticks} class:icon-mute={!ticks}></span><span class="sr-only">틱 사운드</span></button>
 				<output>{timestamp(time)} <span>/ {timestamp(chart.duration)}</span></output>
 				<ul class="density-legend" aria-label="밀도 그래프 범례">
 					{#each densityKinds as kind}<li><i style:--swatch={kind.color}></i>{kind.label}</li>{/each}
@@ -598,12 +613,15 @@
 	.icon-search { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='6.5'/%3E%3Cpath d='m16 16 4.5 4.5'/%3E%3C/svg%3E"); }
 	.icon-play { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M8 4.8v14.4a1 1 0 0 0 1.5.86l11.6-7.2a1 1 0 0 0 0-1.72L9.5 3.94A1 1 0 0 0 8 4.8Z'/%3E%3C/svg%3E"); }
 	.icon-pause { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='5.5' y='4' width='4.5' height='16' rx='1.2'/%3E%3Crect x='14' y='4' width='4.5' height='16' rx='1.2'/%3E%3C/svg%3E"); }
+	.icon-sound { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 9.5h3.5L12 5.5v13l-4.5-4H4z' fill='black'/%3E%3Cpath d='M15.5 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11'/%3E%3C/svg%3E"); }
+	.icon-mute { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 9.5h3.5L12 5.5v13l-4.5-4H4z' fill='black'/%3E%3Cpath d='m16 9.5 5 5M21 9.5l-5 5'/%3E%3C/svg%3E"); }
 	.icon-restart { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='4.5' y='5' width='3' height='14' rx='1'/%3E%3Cpath d='M19.5 5.9v12.2a1 1 0 0 1-1.55.83L9.2 12.83a1 1 0 0 1 0-1.66l8.75-6.1a1 1 0 0 1 1.55.83Z'/%3E%3C/svg%3E"); }
 	.icon-sliders { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M4 7h9m4 0h3M4 17h3m4 0h9'/%3E%3Ccircle cx='15' cy='7' r='2.2'/%3E%3Ccircle cx='9' cy='17' r='2.2'/%3E%3C/svg%3E"); }
 	.icon-down { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9.5 6 6 6-6'/%3E%3C/svg%3E"); }
 	.icon-up { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 14.5 6-6 6 6'/%3E%3C/svg%3E"); }
 	.icon-button { width: var(--tap); height: var(--tap); padding: 0; border-color: transparent; background: transparent; color: var(--text-2); }
 	.icon-button[aria-expanded='true'] { color: var(--text); }
+	.icon-button[aria-pressed='true'] { color: var(--accent); }
 
 	/* Shell */
 	main { height: 100dvh; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; }

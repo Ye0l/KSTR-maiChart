@@ -14,7 +14,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 test('collapsible layout, mobile overlay, tabs and playback', { timeout: 30000 }, async () => {
 	const profile = await mkdtemp(join(tmpdir(), 'maichart-layout-'));
 	// The window must cover the emulated 1280x800 viewport: Chrome drops synthetic input outside the real window.
-	const browser = spawn(process.env.CHROMIUM ?? 'chromium', ['--headless', '--no-sandbox', '--disable-dev-shm-usage', '--remote-debugging-port=0', '--window-size=1280,800', `--user-data-dir=${profile}`, process.env.VIEWER_URL ?? 'http://localhost:5173/']);
+	const browser = spawn(process.env.CHROMIUM ?? 'chromium', ['--headless', '--no-sandbox', '--disable-dev-shm-usage', '--remote-debugging-port=0', '--window-size=1280,800', '--autoplay-policy=no-user-gesture-required', `--user-data-dir=${profile}`, process.env.VIEWER_URL ?? 'http://localhost:5173/']);
 	let socket;
 	try {
 		const endpoint = await new Promise((resolve, reject) => {
@@ -292,6 +292,21 @@ test('collapsible layout, mobile overlay, tabs and playback', { timeout: 30000 }
 		assert.equal(await evaluate('document.querySelectorAll("[data-panel]").length'), 0);
 		assert.match(await evaluate('document.querySelector("#chart-stage").textContent'), /표시할 뷰/);
 		await showViews('game');
+		await evaluate('window.__ticks = 0; const create = AudioContext.prototype.createOscillator; AudioContext.prototype.createOscillator = function () { window.__ticks++; return create.call(this); }; 1');
+		const playTicks = async () => {
+			await evaluate('window.__ticks = 0');
+			await setValue('.seek', firstTap.time - .3);
+			await click('.controls button');
+			await sleep(600);
+			await click('.controls button');
+			return evaluate('window.__ticks');
+		};
+		assert.equal(await attr('#tick-toggle', 'aria-pressed'), 'true', 'tick sound is on by default');
+		assert.ok(await playTicks() >= 1, 'a tick is scheduled for the press moment');
+		await click('#tick-toggle');
+		assert.equal(await evaluate('localStorage.getItem("maichart.ticks")'), 'false', 'tick toggle is saved');
+		assert.equal(await playTicks(), 0, 'muted playback schedules no ticks');
+		await click('#tick-toggle');
 		await setValue('.seek', 0);
 		await click('.controls button');
 		await sleep(1100);

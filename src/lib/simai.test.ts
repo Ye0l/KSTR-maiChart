@@ -7,6 +7,7 @@ import { distance, position, slidePath, trace } from './geometry.ts';
 import { sensorPolygon } from './sensor-layout.ts';
 import { markSimultaneous, noteColor } from './presentation.ts';
 import { pressMarks, pressMoments } from './press.ts';
+import { dueTicks } from './ticks.ts';
 import { beatsBetween, dropDistance, fallHeight, project, projectSlide, sectorArc, sectorSpan, timeOpacity } from './isometric.ts';
 
 const close = (actual: number, expected: number) => assert.ok(Math.abs(actual - expected) < 1e-8, `${actual} != ${expected}`);
@@ -124,6 +125,13 @@ test('counting notes keeps the last press moments, a chord counting once, howeve
 	close(Number(flash[0][2]), 1 - .05 / .18);
 	assert.deepEqual(marks(20, 0), []);
 	assert.deepEqual(pressMarks(presses, 20, tempo, -1, 'notes'), []);
+});
+
+test('ticks fall in the scheduling window once per instant', () => {
+	const times = [0, .5, .5, .5 + 1e-9, 1, 1.5];
+	assert.deepEqual(dueTicks(times, 0, 1), [0, .5]);
+	assert.deepEqual(dueTicks(times, .5, 1.5), [.5, 1]);
+	assert.deepEqual(dueTicks(times, 1.6, 2), []);
 });
 
 test('TAP/HOLD are pink, input chords yellow, and BREAK takes priority', () => {
