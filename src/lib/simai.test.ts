@@ -35,10 +35,11 @@ test('sector emphasis peaks at the note and fades out short of the neighbouring 
 
 test('isometric notes brighten as their hit nears, whatever lane they are in', () => {
 	close(timeOpacity(0), 1);
-	close(timeOpacity(270), .575);
+	close(timeOpacity(270), .3);
+	assert.ok(timeOpacity(135) > .3 && timeOpacity(135) < 1);
 	close(timeOpacity(540), .15);
 	close(timeOpacity(dropDistance()), .15);
-	close(timeOpacity(535, 1250), .575);
+	close(timeOpacity(535, 1250), .3);
 });
 
 test('isometric spawn starts above the top at every canvas height and sensor position', () => {

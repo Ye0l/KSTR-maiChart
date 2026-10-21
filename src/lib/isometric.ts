@@ -10,7 +10,9 @@ export const planeTransform = (height = 0, sceneHeight = 720) => `matrix(${scale
 export const fallHeight = (at: number, time: number, approach: number, sceneHeight = 720) => Math.max(0, (at - time) / approach * dropDistance(sceneHeight));
 // Notes fade in as their hit nears so the next one to press stands out. Height is proportional to the time left;
 // the scale runs over the visible column (board centre to the top edge), since notes spawn above the viewport.
-export const timeOpacity = (lift: number, sceneHeight = 720) => .15 + .85 * clamp(1 - lift / (sceneHeight - 180));
+// The curve keeps the upper half faint: 15% at the top edge, 30% halfway down, full on the board.
+const fadeCurve = Math.log(.15 / .85) / Math.log(.5);
+export const timeOpacity = (lift: number, sceneHeight = 720) => .15 + .85 * clamp(1 - lift / (sceneHeight - 180)) ** fadeCurve;
 
 export function project(point: Point, height = 0, sceneHeight = 720): Point {
 	return { x: 300 + scaleX * (point.x - 300), y: centerY(sceneHeight) + scaleY * (point.y - 300) - height };
