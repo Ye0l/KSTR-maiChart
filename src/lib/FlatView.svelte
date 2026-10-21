@@ -2,9 +2,11 @@
 	import { onMount } from 'svelte';
 	import { noteColor, type DisplayNote } from './presentation.ts';
 	import { clamp, star } from './geometry.ts';
+	import { beatsBetween } from './isometric.ts';
 
-	let { notes, time, noteSpeed, touchSpeed }: {
+	let { notes, time, noteSpeed, touchSpeed, tempo }: {
 		notes: DisplayNote[]; time: number; noteSpeed: number; touchSpeed: number;
+		tempo: { time: number; bpm: number }[];
 	} = $props();
 	const lanes = Array.from({ length: 8 }, (_, i) => i + 1);
 	let canvas: SVGSVGElement | undefined;
@@ -26,6 +28,8 @@
 	const approach = (note: DisplayNote) => 2 / (note.kind.startsWith('touch') ? touchSpeed : noteSpeed);
 	const x = (id: string) => 40 + ((id.startsWith('C') ? 4.5 : Number(id.at(-1))) - .5) * 65;
 	const y = (at: number, note: DisplayNote) => hitY - (at - time) / approach(note) * (hitY - top);
+	// Beat lines fall at the button-note rate so they measure the notes around them.
+	const beats = $derived(beatsBetween(tempo, time, time + 2 / noteSpeed).map((beat) => ({ ...beat, y: hitY - (beat.time - time) / (2 / noteSpeed) * (hitY - top) })));
 	const visible = $derived(notes.filter((note) => note.time - approach(note) <= time && time <= note.time + note.wait + note.duration + .18));
 </script>
 
@@ -39,6 +43,9 @@
 	{/each}
 	<line x1="40" y1={hitY} x2="560" y2={hitY} stroke="#bdc9df" stroke-width="3" />
 	<g clip-path="url(#flat-playfield)">
+		{#each beats as beat}
+			<line class="beat-line" x1="40" x2="560" y1={beat.y} y2={beat.y} stroke="#9fb0d0" stroke-width={beat.downbeat ? 2 : 1} opacity={beat.downbeat ? .35 : .15} />
+		{/each}
 		<!-- shortcut: SLIDE paths are reduced to start/wait/end, not spatial trajectories. -->
 		{#each visible.filter((note) => note.kind === 'slide') as note}
 			{@const start = note.segments[0].start}

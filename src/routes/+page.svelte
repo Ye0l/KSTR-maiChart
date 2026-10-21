@@ -85,6 +85,8 @@
 		// Registered by hand: the wheel must be cancelable, and Svelte attaches wheel handlers as passive.
 		const wheel = (event: WheelEvent) => {
 			event.preventDefault();
+			// Ctrl+wheel is a trackpad pinch; it is blocked page-wide below and must not seek.
+			if (event.ctrlKey) return;
 			const unit = event.deltaMode === 1 ? 40 : event.deltaMode === 2 ? timelineScroll!.clientHeight : 1;
 			seekBy(event.deltaY * unit / pixelsPerSecond);
 		};
@@ -218,6 +220,16 @@
 		}
 		speedsLoaded = true;
 		if (window.matchMedia('(max-width: 720px)').matches) paneOpen = false;
+		// Page zoom is blocked: the stage captures scrolling, so a zoomed page is very hard to zoom back out.
+		// iOS Safari ignores user-scalable=no and fires gesture events; elsewhere a pinch arrives as Ctrl+wheel.
+		const block = (event: Event) => event.preventDefault();
+		const pinch = (event: WheelEvent) => { if (event.ctrlKey) event.preventDefault(); };
+		for (const type of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(type, block);
+		window.addEventListener('wheel', pinch, { passive: false });
+		return () => {
+			for (const type of ['gesturestart', 'gesturechange', 'gestureend']) document.removeEventListener(type, block);
+			window.removeEventListener('wheel', pinch);
+		};
 	});
 
 	// The frame loop only runs while playing, so a paused viewer stays idle.
@@ -418,7 +430,7 @@
 			</svg>
 			{/if}
 			{#if id === 'flat'}
-				<FlatView notes={displayNotes} {time} noteSpeed={viewSpeeds.flat.note} touchSpeed={viewSpeeds.flat.touch} />
+				<FlatView notes={displayNotes} {time} noteSpeed={viewSpeeds.flat.note} touchSpeed={viewSpeeds.flat.touch} tempo={chart.tempo} />
 			{/if}
 			{#if id === 'isometric'}
 				<IsometricView notes={prepared} {time} noteSpeed={viewSpeeds.isometric.note} touchSpeed={viewSpeeds.isometric.touch} tempo={chart.tempo} />
@@ -535,6 +547,7 @@
 		--radius: 10px;
 		--tap: 40px;
 	}
+	:global(html) { touch-action: pan-x pan-y; }
 	:global(body) { margin: 0; background: var(--bg); color: var(--text); font-family: 'Pretendard Variable', Pretendard, system-ui, -apple-system, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; }
 	:global(*) { box-sizing: border-box; }
 	[hidden] { display: none !important; }
