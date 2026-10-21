@@ -1,0 +1,276 @@
+{
+  "schema": "simai-spatial-reference-v1",
+  "source": {
+    "notation": "https://w.atwiki.jp/simai/pages/1003.html",
+    "slideValidityDiagram": "https://img.atwiki.jp/simai/attach/1003/54/slides_eng.png",
+    "sensorDiagram": "https://img.atwiki.jp/simai/attach/1003/52/bg.jpg"
+  },
+  "coordinateSystem": {
+    "origin": "top-left",
+    "canvasWidth": 600,
+    "canvasHeight": 600,
+    "xDirection": "right",
+    "yDirection": "down",
+    "accuracy": "approximated centers from reference diagram; NOT calibrated gameplay hitbox boundaries"
+  },
+  "buttonPositions": {
+    "1": {
+      "x": 397.2,
+      "y": 65.33
+    },
+    "2": {
+      "x": 534.67,
+      "y": 202.8
+    },
+    "3": {
+      "x": 534.67,
+      "y": 397.2
+    },
+    "4": {
+      "x": 397.2,
+      "y": 534.67
+    },
+    "5": {
+      "x": 202.8,
+      "y": 534.67
+    },
+    "6": {
+      "x": 65.33,
+      "y": 397.2
+    },
+    "7": {
+      "x": 65.33,
+      "y": 202.8
+    },
+    "8": {
+      "x": 202.8,
+      "y": 65.33
+    }
+  },
+  "sensorPositions": {
+    "A1": {
+      "x": 397.2,
+      "y": 65.33,
+      "radiusApproxPx": 254,
+      "angleDegFromRightClockwise": -67.5
+    },
+    "A2": {
+      "x": 534.67,
+      "y": 202.8,
+      "radiusApproxPx": 254,
+      "angleDegFromRightClockwise": -22.5
+    },
+    "A3": {
+      "x": 534.67,
+      "y": 397.2,
+      "radiusApproxPx": 254,
+      "angleDegFromRightClockwise": 22.5
+    },
+    "A4": {
+      "x": 397.2,
+      "y": 534.67,
+      "radiusApproxPx": 254,
+      "angleDegFromRightClockwise": 67.5
+    },
+    "A5": {
+      "x": 202.8,
+      "y": 534.67,
+      "radiusApproxPx": 254,
+      "angleDegFromRightClockwise": 112.5
+    },
+    "A6": {
+      "x": 65.33,
+      "y": 397.2,
+      "radiusApproxPx": 254,
+      "angleDegFromRightClockwise": 157.5
+    },
+    "A7": {
+      "x": 65.33,
+      "y": 202.8,
+      "radiusApproxPx": 254,
+      "angleDegFromRightClockwise": 202.5
+    },
+    "A8": {
+      "x": 202.8,
+      "y": 65.33,
+      "radiusApproxPx": 254,
+      "angleDegFromRightClockwise": 247.5
+    },
+    "B1": {
+      "x": 345.92,
+      "y": 189.13,
+      "radiusApproxPx": 120,
+      "angleDegFromRightClockwise": -67.5
+    },
+    "B2": {
+      "x": 410.87,
+      "y": 254.08,
+      "radiusApproxPx": 120,
+      "angleDegFromRightClockwise": -22.5
+    },
+    "B3": {
+      "x": 410.87,
+      "y": 345.92,
+      "radiusApproxPx": 120,
+      "angleDegFromRightClockwise": 22.5
+    },
+    "B4": {
+      "x": 345.92,
+      "y": 410.87,
+      "radiusApproxPx": 120,
+      "angleDegFromRightClockwise": 67.5
+    },
+    "B5": {
+      "x": 254.08,
+      "y": 410.87,
+      "radiusApproxPx": 120,
+      "angleDegFromRightClockwise": 112.5
+    },
+    "B6": {
+      "x": 189.13,
+      "y": 345.92,
+      "radiusApproxPx": 120,
+      "angleDegFromRightClockwise": 157.5
+    },
+    "B7": {
+      "x": 189.13,
+      "y": 254.08,
+      "radiusApproxPx": 120,
+      "angleDegFromRightClockwise": 202.5
+    },
+    "B8": {
+      "x": 254.08,
+      "y": 189.13,
+      "radiusApproxPx": 120,
+      "angleDegFromRightClockwise": 247.5
+    },
+    "D1": {
+      "x": 300.0,
+      "y": 53.0,
+      "radiusApproxPx": 247,
+      "angleDegFromRightClockwise": -90
+    },
+    "D2": {
+      "x": 474.66,
+      "y": 125.34,
+      "radiusApproxPx": 247,
+      "angleDegFromRightClockwise": -45
+    },
+    "D3": {
+      "x": 547.0,
+      "y": 300.0,
+      "radiusApproxPx": 247,
+      "angleDegFromRightClockwise": 0
+    },
+    "D4": {
+      "x": 474.66,
+      "y": 474.66,
+      "radiusApproxPx": 247,
+      "angleDegFromRightClockwise": 45
+    },
+    "D5": {
+      "x": 300.0,
+      "y": 547.0,
+      "radiusApproxPx": 247,
+      "angleDegFromRightClockwise": 90
+    },
+    "D6": {
+      "x": 125.34,
+      "y": 474.66,
+      "radiusApproxPx": 247,
+      "angleDegFromRightClockwise": 135
+    },
+    "D7": {
+      "x": 53.0,
+      "y": 300.0,
+      "radiusApproxPx": 247,
+      "angleDegFromRightClockwise": 180
+    },
+    "D8": {
+      "x": 125.34,
+      "y": 125.34,
+      "radiusApproxPx": 247,
+      "angleDegFromRightClockwise": 225
+    },
+    "E1": {
+      "x": 300.0,
+      "y": 128.0,
+      "radiusApproxPx": 172,
+      "angleDegFromRightClockwise": -90
+    },
+    "E2": {
+      "x": 421.62,
+      "y": 178.38,
+      "radiusApproxPx": 172,
+      "angleDegFromRightClockwise": -45
+    },
+    "E3": {
+      "x": 472.0,
+      "y": 300.0,
+      "radiusApproxPx": 172,
+      "angleDegFromRightClockwise": 0
+    },
+    "E4": {
+      "x": 421.62,
+      "y": 421.62,
+      "radiusApproxPx": 172,
+      "angleDegFromRightClockwise": 45
+    },
+    "E5": {
+      "x": 300.0,
+      "y": 472.0,
+      "radiusApproxPx": 172,
+      "angleDegFromRightClockwise": 90
+    },
+    "E6": {
+      "x": 178.38,
+      "y": 421.62,
+      "radiusApproxPx": 172,
+      "angleDegFromRightClockwise": 135
+    },
+    "E7": {
+      "x": 128.0,
+      "y": 300.0,
+      "radiusApproxPx": 172,
+      "angleDegFromRightClockwise": 180
+    },
+    "E8": {
+      "x": 178.38,
+      "y": 178.38,
+      "radiusApproxPx": 172,
+      "angleDegFromRightClockwise": 225
+    },
+    "C": {
+      "x": 300,
+      "y": 300
+    },
+    "C1": {
+      "aliasOf": "C"
+    },
+    "C2": {
+      "aliasOf": "C"
+    }
+  },
+  "slideValidation": {
+    "notation": "d = (end - start + 8) % 8; start, end, middle are 1..8",
+    "rules": {
+      "-": "d in {2,3,4,5,6}",
+      "^": "d in {1,2,3,5,6,7}; d=4 is forbidden",
+      "v": "d in {1,2,3,5,6,7}; d=4 is forbidden",
+      "<": "all start/end button pairs including same-number pair according to source table",
+      ">": "all start/end button pairs including same-number pair according to source table",
+      "p": "all start/end button pairs including same-number pair according to source table",
+      "q": "all start/end button pairs including same-number pair according to source table",
+      "pp": "all start/end button pairs including same-number pair according to source table",
+      "qq": "all start/end button pairs including same-number pair according to source table",
+      "s": "d == 4",
+      "z": "d == 4",
+      "w": "d == 4",
+      "V": "middle offset from start is 2 or 6; let e=(end-middle+8)%8. e in {3,4,5} allowed; for e in {2,6}, allowed only if end == opposite(start); other cases forbidden"
+    }
+  },
+  "geometry": {
+    "status": "Only symbolic path types and approximate anchor coordinates provided; precise slide curve geometry and time-to-position functions must come from separate verified definitions.",
+    "sources": "The original images specify slide endpoint validity and sensor positions, not full shape-specific interpolation paths."
+  }
+}

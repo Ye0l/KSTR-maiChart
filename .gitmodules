@@ -1,0 +1,3 @@
+[submodule "Maichart-Converts"]
+	path = Maichart-Converts
+	url = https://github.com/Neskol/Maichart-Converts.git
