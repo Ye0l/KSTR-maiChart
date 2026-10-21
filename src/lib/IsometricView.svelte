@@ -101,8 +101,8 @@
 			<circle class="beat-rung" cx="300" cy="300" r="254" transform={plane(rung.lift)} fill="none" stroke="#9fb0d0" stroke-width="1" vector-effect="non-scaling-stroke" opacity={rung.downbeat ? .24 : .1} pointer-events="none" />
 		{/each}
 		{#each guides as guide}
-			<circle class="timing-ring" data-height={guide.lift} cx="300" cy="300" r="254" transform={plane(guide.lift)} fill="none" stroke={guide.color} stroke-width="1" vector-effect="non-scaling-stroke" opacity=".3" pointer-events="none" />
-			<g class="timing-sectors" transform={plane(guide.lift)} pointer-events="none">
+			<circle class="timing-ring" data-height={guide.lift} cx="300" cy="300" r="254" transform={plane(guide.lift)} fill="none" stroke={guide.color} stroke-width="1" vector-effect="non-scaling-stroke" opacity={.3 * timeOpacity(guide.lift, viewHeight)} pointer-events="none" />
+			<g class="timing-sectors" transform={plane(guide.lift)} opacity={timeOpacity(guide.lift, viewHeight)} pointer-events="none">
 				{#each guide.notes as note}
 					{@const fade = time > note.time && !(note.duration > 0 && time < note.time + note.duration) ? clamp(1 - (time - note.time) / .18) : 1}
 					{#each sectorArc(position(note.position)) as piece}
@@ -145,7 +145,7 @@
 			{@const touch = note.kind.startsWith('touch')}
 			{@const hit = time >= note.time}
 			{@const holding = note.duration > 0 && hit && time < note.time + note.duration}
-			<g data-kind={note.kind} data-time={note.time} data-position={note.position} data-height={lift} opacity={hit && !holding ? clamp(1 - (time - note.time) / .18) : timeOpacity(note.time - time, approach(note))}>
+			<g data-kind={note.kind} data-time={note.time} data-position={note.position} data-height={lift} opacity={hit && !holding ? clamp(1 - (time - note.time) / .18) : timeOpacity(lift, viewHeight)}>
 				{#if note.duration > 0}
 					<line class="hold-body" x1={head.x} y1={head.y} x2={tail.x} y2={tail.y} stroke={noteColor(note)} stroke-width="14" opacity=".45" />
 					<g transform={plane(height(note.time + note.duration, note))}>
