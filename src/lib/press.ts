@@ -1,4 +1,5 @@
-import { clamp } from './geometry.ts';
+import { clamp, distance, lastEntry, notePaths, position } from './geometry.ts';
+import { aSensorPolygon } from './sensor-layout.ts';
 import { noteColor, type DisplayNote } from './presentation.ts';
 
 export type Press = { time: number; button: string; color: string };
@@ -18,14 +19,30 @@ export function finishesChain(note: DisplayNote, notes: DisplayNote[]) {
 	return !notes.some((next) => next.kind === 'slide' && next !== note && next.wait === 0 && next.position === button && Math.abs(next.time - end) < 1e-6);
 }
 
-// Moments a button must be down for a perfect: TAP, HOLD start, star head, and where each SLIDE finishes.
+const judged = new WeakMap<object, number>();
+// A SLIDE is judged the moment its star enters the last A sensor, not when it reaches the button at the path's end.
+// The last entry counts, so paths that start inside that sensor or loop through it are judged on the way back in.
+export function slideJudgeTime(note: DisplayNote) {
+	let progress = judged.get(note.segments);
+	if (progress === undefined) {
+		progress = Math.max(...notePaths(note.segments).map((points) => {
+			const end = points.at(-1)!;
+			const button = Array.from({ length: 8 }, (_, i) => i + 1).reduce((best, n) => distance(position(String(n)), end) < distance(position(String(best)), end) ? n : best);
+			return lastEntry(points, aSensorPolygon(button));
+		}));
+		judged.set(note.segments, progress);
+	}
+	return note.time + note.wait + note.duration * progress;
+}
+
+// Moments a button must be down for a perfect: TAP, HOLD start, star head, and where each SLIDE is judged.
 export function pressMoments(notes: DisplayNote[]): Press[] {
 	const presses: Press[] = [];
 	for (const note of notes) {
 		if (note.kind === 'tap' || note.kind === 'hold' || note.kind === 'star') {
 			presses.push({ time: note.time, button: note.position, color: noteColor(note) });
 		} else if (note.kind === 'slide' && finishesChain(note, notes)) {
-			presses.push({ time: note.time + note.wait + note.duration, button: String(note.segments.at(-1)!.end), color: noteColor(note) });
+			presses.push({ time: slideJudgeTime(note), button: String(note.segments.at(-1)!.end), color: noteColor(note) });
 		}
 	}
 	return presses.sort((a, b) => a.time - b.time);

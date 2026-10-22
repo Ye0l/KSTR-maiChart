@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import type { PageData } from './$types';
 	import { parseChart, readMaidata, type Note } from '#lib/simai.ts';
-	import { chevrons, clamp, mix, position, slidePath, star, trace } from '#lib/geometry.ts';
+	import { chevrons, clamp, mix, notePaths, position, star, trace } from '#lib/geometry.ts';
 	import SensorLayout from '#lib/SensorLayout.svelte';
 	import FlatView from '#lib/FlatView.svelte';
 	import IsometricView from '#lib/IsometricView.svelte';
@@ -121,11 +121,7 @@
 	const displayNotes = $derived(markSimultaneous(chart.notes));
 	const prepared = $derived(displayNotes.map((note) => ({
 		...note,
-		paths: note.kind === 'slide' ? note.segments.reduce<ReturnType<typeof slidePath>>((paths, segment) => {
-			const next = slidePath(segment);
-			if (paths.length === 1 && next.length === 1) return [[...paths[0], ...next[0].slice(1)]];
-			return [...paths, ...next];
-		}, []) : []
+		paths: note.kind === 'slide' ? notePaths(note.segments) : []
 	})));
 	const presses = $derived(pressMoments(displayNotes));
 	const tickTimes = $derived(presses.map((press) => press.time));

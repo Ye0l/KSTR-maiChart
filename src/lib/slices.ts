@@ -1,6 +1,6 @@
 import { mix, type Point } from './geometry.ts';
 import { noteColor, type DisplayNote } from './presentation.ts';
-import { finishesChain } from './press.ts';
+import { finishesChain, slideJudgeTime } from './press.ts';
 
 type Tempo = { time: number; bpm: number }[];
 export type SliceNote = DisplayNote & { paths: Point[][] };
@@ -54,7 +54,7 @@ export function sliceInstants(notes: SliceNote[], tempo: Tempo, length: number) 
 	for (const note of notes) {
 		const color = noteColor(note);
 		if (note.kind === 'slide') {
-			if (finishesChain(note, notes)) items.push({ time: note.time + note.wait + note.duration, item: { kind: 'slide', position: String(note.segments.at(-1)!.end), color, note } });
+			if (finishesChain(note, notes)) items.push({ time: slideJudgeTime(note), item: { kind: 'slide', position: String(note.segments.at(-1)!.end), color, note } });
 		} else items.push({ time: note.time, item: { kind: note.kind, position: note.position, color, note } });
 	}
 	items.sort((a, b) => a.time - b.time);

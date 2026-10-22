@@ -6,6 +6,9 @@ export const sensorOutlines = {
 	E: [[0, -380], [72, -308], [0, -236], [-72, -308]]
 } satisfies Record<string, number[][]>;
 
+// The inner edge of an A sensor, from its border with D(n) round to D(n+1); both ends sit on the skin's rim (r 482).
+export const aSensorEdge = [[70, -477], [56, -336], [84, -308], [156, -280], [204, -280], [287, -387]];
+
 export function sensorPoint(x: number, y: number, index: number) {
 	const angle = (index - 1) * Math.PI / 4;
 	return {
@@ -20,4 +23,16 @@ export function sensorCenter(family: 'B' | 'E', index: number) {
 
 export function sensorPolygon(family: 'B' | 'E', index: number) {
 	return sensorOutlines[family].map(([x, y]) => sensorPoint(x, y, index));
+}
+
+// A sensors run out past the rim, so the edge is closed by an arc beyond it; star paths ending on a button stay inside.
+export function aSensorPolygon(index: number) {
+	const [last, first] = [aSensorEdge.at(-1)!, aSensorEdge[0]];
+	const from = Math.atan2(last[1], last[0]);
+	const to = Math.atan2(first[1], first[0]);
+	const arc = Array.from({ length: 9 }, (_, i) => {
+		const angle = from + (to - from) * i / 8;
+		return [560 * Math.cos(angle), 560 * Math.sin(angle)];
+	});
+	return [...aSensorEdge, ...arc].map(([x, y]) => sensorPoint(x, y, index));
 }
