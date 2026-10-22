@@ -21,10 +21,12 @@ async function scan() {
 		const bpm = Number(fields.wholebpm);
 		return {
 			id, title: basename(dirname(id)).replace(/^(\d+)_/, '$1 · ').replace(/_DX$/, ' [DX]'), version: utage(id) ? utageVersion : fields.version ?? '', levels,
+			// The folder name is a romanised key; &title holds the real title, minus the [DX] / [SD] / [宴] suffix the catalog shows separately.
+			name: fields.title?.replace(/\[(DX|SD|宴)\]$/, '').trim() || undefined,
 			artist: fields.artist ?? '', bpm: Number.isFinite(bpm) && bpm > 0 ? bpm : undefined, designers
 		};
 	}));
-	return songs.sort((a, b) => a.title.localeCompare(b.title, 'ja', { numeric: true }));
+	return songs.sort((a, b) => (a.name ?? a.title).localeCompare(b.name ?? b.title, 'ja', { numeric: true }));
 }
 
 // The chart repository is a read-only submodule, so one scan serves the whole process.

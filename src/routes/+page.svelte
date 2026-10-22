@@ -7,19 +7,14 @@
 	import FlatView from '#lib/FlatView.svelte';
 	import IsometricView from '#lib/IsometricView.svelte';
 	import SliceView from '#lib/SliceView.svelte';
+	import SongPicker from '#lib/SongPicker.svelte';
+	import { describeSong, difficultyColor, difficultyName, isUtage } from '#lib/catalog.ts';
 	import { defaultSliceCount, defaultSliceLength, sliceCounts, sliceLengths } from '#lib/slices.ts';
 	import { markSimultaneous, noteColor as color } from '#lib/presentation.ts';
 	import { createTicker } from '#lib/ticks.ts';
 	import { defaultTrail, pressMarks, pressMoments, trailOptions, trailUnits, type TrailUnit } from '#lib/press.ts';
 
 	let { data }: { data: PageData } = $props();
-	const names = ['EASY', 'BASIC', 'ADVANCED', 'EXPERT', 'MASTER', 'Re:MASTER', 'UTAGE'];
-	const difficultyColors = ['#4ea6ff', '#4cd964', '#ffc23d', '#ff6b81', '#b77cff', '#e9d4ff', '#ff7ad9'];
-	// Utage songs file their charts under slot 7, or under 2 and 3 for paired charts; none of them are BASIC etc.
-	const isUtage = (id: string) => id.startsWith('宴会場/');
-	const difficultyName = (level: string, utage: boolean, levels: string[]) =>
-		utage ? (levels.length > 1 ? `UTAGE ${levels.indexOf(level) + 1}` : 'UTAGE') : names[Number(level) - 1] ?? level;
-	const difficultyColor = (level: string, utage: boolean) => difficultyColors[utage ? 6 : Number(level) - 1];
 	const legend = [
 		['#ff68b7', 'TAP / HOLD'], ['#ffdb4d', '동시입력'], ['#75edb0', 'TOUCH'],
 		['#57dfff', 'SLIDE'], ['#ff9a35', 'BREAK (최우선)'], ['transparent', 'EX (흰 테두리)']
@@ -52,7 +47,6 @@
 	const speedKinds = [['note', '노트'], ['touch', '터치']] as const;
 	const speeds = Array.from({ length: 37 }, (_, i) => 1 + i * .25);
 	const approachTime = (note: Note) => 2 / (note.kind.startsWith('touch') ? viewSpeeds.game.touch : viewSpeeds.game.note);
-	let search = $state('');
 	let paneOpen = $state(true);
 	let playerOpen = $state(true);
 	let speedsOpen = $state(false);
@@ -137,69 +131,8 @@
 	const tickTimes = $derived(presses.map((press) => press.time));
 	const marks = $derived(pressMarks(presses, time, chart.tempo, pressTrail, pressTrailUnit));
 	const visible = $derived(prepared.filter((note) => note.time - approachTime(note) <= time && time <= note.time + note.wait + note.duration + .18));
-	const songs = $derived(data.songs.map((song) => {
-		const match = /^(\d+) · (.*?)( \[DX\])?$/.exec(song.title);
-		return { ...song, name: match?.[2] ?? song.title, number: match?.[1], dx: !!match?.[3], genre: song.id.split('/')[0] };
-	}));
-	const versionOrder = ['', ' PLUS', ' GreeN', ' GreeN PLUS', ' ORANGE', ' ORANGE PLUS', ' PiNK', ' PiNK PLUS', ' MURASAKi', ' MURASAKi PLUS', ' MiLK', ' MiLK PLUS', ' FiNALE',
-		' DX', ' DX PLUS', ' DX Splash', ' DX Splash PLUS', ' DX UNiVERSE', ' DX UNiVERSE PLUS', ' DX FESTiVAL', ' DX FESTiVAL PLUS', ' DX BUDDiES', ' DX BUDDiES PLUS',
-		' DX PRiSM', ' DX PRiSM PLUS', ' DX CiRCLE', ' DX CiRCLE PLUS'].map((name) => `maimai${name}`);
-	// Utage (宴会場) charts are filed apart from the release versions, at the end.
-	const versionRank = (version: string) => version === '宴会場' ? versionOrder.length + 1 : versionOrder.includes(version) ? versionOrder.indexOf(version) : versionOrder.length;
-	const versions = $derived([...new Set(data.songs.map((song) => song.version).filter(Boolean))].sort((a, b) => versionRank(a) - versionRank(b) || a.localeCompare(b)));
-	// Chart constants group the way the game shows them: x.0–x.6 is "x", x.7–x.9 is "x+"; a trailing "?" marks an estimate.
-	const levelLabel = (value: string) => {
-		const match = /^(\d+)(\+)?(?:\.(\d))?/.exec(value);
-		if (!match) return value;
-		return match[2] || Number(match[3] ?? 0) >= 7 ? `${match[1]}+` : match[1];
-	};
-	const levelRank = (label: string) => parseFloat(label) + (label.endsWith('+') ? .5 : 0);
-	const levelOptions = $derived([...new Set(data.songs.flatMap((song) => song.levels.map(([, value]) => levelLabel(value))))].sort((a, b) => levelRank(a) - levelRank(b) || a.localeCompare(b)));
-	let levelFilter = $state('');
-	let versionFilter = $state('');
-	let slotFilter = $state('');
-	let genreFilter = $state('');
-	let kindFilter = $state<'' | 'dx' | 'sd'>('');
-	let bpmMin = $state<number | null>(null);
-	let bpmMax = $state<number | null>(null);
-	let moreFilters = $state(false);
-	type SortKey = 'title' | 'number' | 'version' | 'level' | 'bpm';
-	const sortKeys: [SortKey, string][] = [['title', '이름'], ['number', '번호'], ['version', '버전'], ['level', '레벨'], ['bpm', 'BPM']];
-	let sortKey = $state<SortKey>('title');
-	let sortDesc = $state(false);
-	const slotOptions = [['2', 'BASIC'], ['3', 'ADVANCED'], ['4', 'EXPERT'], ['5', 'MASTER'], ['6', 'Re:MASTER'], ['7', 'UTAGE']];
-	const genres = $derived([...new Set(songs.map((song) => song.genre))]);
-	const extraFilters = $derived(+!!slotFilter + +!!genreFilter + +!!kindFilter + +(bpmMin != null) + +(bpmMax != null));
-	const filtering = $derived(!!(search || levelFilter || versionFilter || extraFilters));
-	function clearFilters() {
-		search = levelFilter = versionFilter = slotFilter = genreFilter = kindFilter = '';
-		bpmMin = bpmMax = null;
-	}
-	const filteredSongs = $derived.by(() => {
-		const query = search.trim().toLowerCase();
-		const list = songs.flatMap((song) => {
-			if (query && ![song.title, song.artist, ...song.designers].some((text) => text.toLowerCase().includes(query))) return [];
-			if (versionFilter && song.version !== versionFilter) return [];
-			if (genreFilter && song.genre !== genreFilter) return [];
-			if (kindFilter && song.dx !== (kindFilter === 'dx')) return [];
-			if ((bpmMin != null && !(song.bpm! >= bpmMin)) || (bpmMax != null && !(song.bpm! <= bpmMax))) return [];
-			// Difficulty and level narrow which charts of the song count; Utage keeps its charts in slots 2/3 or 7.
-			const charts = song.levels.filter(([level, value]) => (!slotFilter || level === slotFilter || (slotFilter === '7' && isUtage(song.id))) && (!levelFilter || levelLabel(value) === levelFilter));
-			if ((slotFilter || levelFilter) && !charts.length) return [];
-			const top = Math.max(-Infinity, ...charts.map(([, value]) => parseFloat(value)).filter(Number.isFinite));
-			return [{ ...song, matches: slotFilter || levelFilter ? charts : [], top }];
-		});
-		const value = (song: (typeof list)[number]) => sortKey === 'number' ? Number(song.number ?? Infinity) : sortKey === 'version' ? versionRank(song.version)
-			: sortKey === 'level' ? song.top : sortKey === 'bpm' ? song.bpm ?? -Infinity : 0;
-		if (sortKey === 'title') return sortDesc ? list.reverse() : list;
-		// Songs missing the sorted value go last either way; ties keep the name order.
-		return list.sort((a, b) => {
-			const [x, y] = [value(a), value(b)];
-			if (!Number.isFinite(x) || !Number.isFinite(y)) return Number(!Number.isFinite(x)) - Number(!Number.isFinite(y));
-			return sortDesc ? y - x : x - y;
-		});
-	});
-	let songList: HTMLUListElement | undefined = $state();
+	const songs = $derived(data.songs.map(describeSong));
+	let pickerOpen = $state(false);
 	// Stack order keeps SLIDE and TOUCH apart; their note colors are too close to sit side by side.
 	const densityKinds = [
 		{ key: 'tap', label: 'TAP·HOLD', color: '#ff68b7' },
@@ -248,15 +181,6 @@
 		}
 	});
 
-	$effect(() => {
-		data.selected;
-		if (!paneOpen || paneTab !== 'charts' || !songList) return;
-		// Bring the open chart into view without scrolling the page itself.
-		const item = songList.querySelector<HTMLElement>('[aria-current="page"]');
-		if (item && (item.offsetTop < songList.scrollTop || item.offsetTop + item.offsetHeight > songList.scrollTop + songList.clientHeight)) {
-			songList.scrollTop = item.offsetTop - (songList.clientHeight - item.offsetHeight) / 2;
-		}
-	});
 
 	$effect(() => {
 		if (!speedsLoaded) return;
@@ -267,7 +191,6 @@
 			localStorage.setItem('maichart.ticks', String(ticks));
 			localStorage.setItem('maichart.sliceCount', String(sliceCount));
 			localStorage.setItem('maichart.sliceLength', String(sliceLength));
-			localStorage.setItem('maichart.sort', JSON.stringify({ key: sortKey, desc: sortDesc }));
 		} catch {
 			// Storage may be blocked; keep the current session usable.
 		}
@@ -291,9 +214,6 @@
 			if (sliceCounts.includes(slices)) sliceCount = slices;
 			const beats = Number(localStorage.getItem('maichart.sliceLength'));
 			if (sliceLengths.some(([value]) => value === beats)) sliceLength = beats;
-			const sort = JSON.parse(localStorage.getItem('maichart.sort') ?? '{}');
-			if (sortKeys.some(([key]) => key === sort?.key)) sortKey = sort.key;
-			sortDesc = sort?.desc === true;
 		} catch {
 			// Invalid or inaccessible storage falls back to the defaults.
 		}
@@ -364,7 +284,7 @@
 		<button id="pane-toggle" class="icon-button" title={paneOpen ? '패널 접기' : '곡 · 정보 패널'} aria-label={paneOpen ? '좌측 패널 접기' : '좌측 패널 펼치기'} aria-expanded={paneOpen} aria-controls="side-pane" onclick={() => paneOpen = !paneOpen}><span class="icon icon-panel"></span></button>
 		<h1><span class="brand">mai</span>Chart</h1>
 		<div class="now-playing">
-			<span class="now-title">{fields.title}</span>
+			<button class="now-title" title="곡 선택" onclick={() => pickerOpen = true}>{fields.title}</button>
 			{#if activeDifficulty}
 				<span class="badge" style:--difficulty={difficultyColor(activeDifficulty, isUtage(data.selected))}>{difficultyName(activeDifficulty, isUtage(data.selected), difficulties)} <b>{fields[`lv_${activeDifficulty}`] || '?'}</b></span>
 			{/if}
@@ -392,66 +312,7 @@
 						</button>
 					{/each}
 				</div>
-				<label class="search">
-					<span class="icon icon-search"></span>
-					<input id="search" type="search" placeholder="곡명·ID·아티스트·보면 제작자" aria-label="곡 검색" autocomplete="off" bind:value={search} />
-				</label>
-				<div class="filters">
-					<select aria-label="레벨 필터" bind:value={levelFilter}>
-						<option value="">레벨 전체</option>
-						{#each levelOptions as level}<option value={level}>Lv {level}</option>{/each}
-					</select>
-					<select aria-label="버전 필터" bind:value={versionFilter}>
-						<option value="">버전 전체</option>
-						{#each versions as version}<option value={version}>{version.replace(/^maimai (?=.)/, '')}</option>{/each}
-					</select>
-				</div>
-				<button id="more-filters" class="more-filters" aria-expanded={moreFilters} aria-controls="extra-filters" onclick={() => moreFilters = !moreFilters}>
-					상세 필터{extraFilters ? ` · ${extraFilters}` : ''}<span class="icon" class:icon-down={!moreFilters} class:icon-up={moreFilters}></span>
-				</button>
-				<div id="extra-filters" class="filters" hidden={!moreFilters}>
-					<select aria-label="난이도 필터" bind:value={slotFilter}>
-						<option value="">난이도 전체</option>
-						{#each slotOptions as [slot, label]}<option value={slot}>{label}</option>{/each}
-					</select>
-					<select aria-label="장르 필터" bind:value={genreFilter}>
-						<option value="">장르 전체</option>
-						{#each genres as genre}<option value={genre}>{genre}</option>{/each}
-					</select>
-					<select aria-label="채보 종류 필터" bind:value={kindFilter}>
-						<option value="">DX·스탠다드</option>
-						<option value="dx">DX만</option>
-						<option value="sd">스탠다드만</option>
-					</select>
-					<div class="bpm-range">
-						<input type="number" inputmode="numeric" min="0" placeholder="BPM" aria-label="최소 BPM" bind:value={bpmMin} />
-						<span>~</span>
-						<input type="number" inputmode="numeric" min="0" placeholder="BPM" aria-label="최대 BPM" bind:value={bpmMax} />
-					</div>
-				</div>
-				<div class="count">
-					<span>{filteredSongs.length === songs.length ? `전체 ${songs.length}곡` : `${filteredSongs.length} / ${songs.length}곡`}</span>
-					{#if filtering}<button class="clear" onclick={clearFilters}>필터 해제</button>{/if}
-					<label class="sort"><span class="sr-only">정렬</span>
-						<select id="sort-key" aria-label="정렬 기준" bind:value={sortKey}>{#each sortKeys as [key, label]}<option value={key}>{label}순</option>{/each}</select>
-					</label>
-					<button id="sort-direction" class="sort-direction" title={sortDesc ? '내림차순' : '오름차순'} aria-label={sortDesc ? '내림차순' : '오름차순'} onclick={() => sortDesc = !sortDesc}>{sortDesc ? '↓' : '↑'}</button>
-				</div>
-				<ul class="songs" bind:this={songList} aria-label="차트 목록" data-sveltekit-preload-data="tap" data-sveltekit-noscroll>
-					{#each filteredSongs as song (song.id)}
-						<li>
-							<a href={`?chart=${encodeURIComponent(song.id)}`} aria-current={song.id === data.selected ? 'page' : undefined} onclick={() => { if (song.matches.length) difficulty = song.matches.at(-1)![0]; }}>
-								<span class="song-name">{song.name}</span>
-								<span class="song-meta">{#if song.dx}<b class="dx">DX</b>{/if}{song.number ? `${song.number} · ` : ''}{song.genre}{#if sortKey === 'bpm' && song.bpm} · BPM {song.bpm}{/if}{#if sortKey === 'version'} · {song.version.replace(/^maimai (?=.)/, '')}{/if}</span>
-								{#if song.matches.length}
-									<span class="song-levels">{#each song.matches as [level, value]}<b style:--difficulty={difficultyColor(level, isUtage(song.id))}>{difficultyName(level, isUtage(song.id), song.levels.map(([slot]) => slot))} {value}</b>{/each}</span>
-								{/if}
-							</a>
-						</li>
-					{:else}
-						<li class="empty-search">{search ? `“${search}”에 맞는 곡이 없습니다.` : '조건에 맞는 곡이 없습니다.'}</li>
-					{/each}
-				</ul>
+				<button id="open-picker" class="open-picker" onclick={() => pickerOpen = true}><span class="icon icon-search"></span>곡 선택</button>
 			</div>
 			<div id="panel-info" class="panel-content" role="tabpanel" aria-labelledby="tab-info" tabindex="0" hidden={paneTab !== 'info'}>
 				<h2>{fields.title}</h2>
@@ -677,6 +538,7 @@
 		<button class="player-toggle icon-button" title={playerOpen ? '재생바 접기' : '재생바 펼치기'} aria-label={playerOpen ? '재생바 접기' : '재생바 펼치기'} aria-expanded={playerOpen} aria-controls="player-content" onclick={() => playerOpen = !playerOpen}><span class="icon" class:icon-down={playerOpen} class:icon-up={!playerOpen}></span></button>
 	</footer>
 </main>
+<SongPicker {songs} selected={data.selected} bind:open={pickerOpen} onpick={(level) => { if (level) difficulty = level; }} />
 
 <style>
 	:global(:root) {
@@ -733,7 +595,10 @@
 	h1 { margin: 0; font-size: 19px; font-weight: 800; letter-spacing: -.02em; white-space: nowrap; }
 	.brand { background: linear-gradient(100deg, var(--pink), var(--accent)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 	.now-playing { display: flex; align-items: center; gap: 10px; min-width: 0; padding-left: 14px; border-left: 1px solid var(--border); }
-	.now-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
+	.now-title { display: block; min-width: 0; min-height: 32px; overflow: hidden; padding: 0 8px; border-color: transparent; background: transparent; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
+	@media (hover: hover) { .now-title:hover { background: var(--surface-3); } }
+	.open-picker { width: 100%; min-height: 44px; font-size: 15px; font-weight: 600; }
+	.open-picker .icon { width: 18px; height: 18px; }
 	.badge { flex: none; padding: 3px 8px; border: 1px solid color-mix(in srgb, var(--difficulty) 55%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--difficulty) 16%, transparent); color: var(--difficulty); font-size: 11px; font-weight: 700; letter-spacing: .03em; white-space: nowrap; }
 	.badge b { color: var(--text); font-variant-numeric: tabular-nums; }
 	.view-switch { display: flex; flex-shrink: 0; gap: 2px; margin-left: auto; padding: 3px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
@@ -755,33 +620,6 @@
 	.difficulty b { font-size: 16px; font-variant-numeric: tabular-nums; }
 	.difficulty[aria-pressed='true'] { border-color: var(--difficulty); background: color-mix(in srgb, var(--difficulty) 18%, var(--surface-2)); }
 	.difficulty[aria-pressed='true'] span { color: var(--difficulty); }
-	.search { position: relative; display: block; margin-top: 4px; }
-	.search .icon { position: absolute; left: 11px; top: 50%; width: 17px; height: 17px; translate: 0 -50%; color: var(--text-3); pointer-events: none; }
-	.search input { width: 100%; min-height: 40px; padding: 0 12px 0 36px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface-2); font-size: 14px; }
-	.search input::placeholder { color: var(--text-3); }
-	.filters { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-	.filters select { width: 100%; }
-	.count { display: flex; align-items: center; gap: 6px; min-height: 30px; margin: 0; color: var(--text-3); font-size: 12px; }
-	.count > span { margin-right: auto; }
-	.sort select { min-height: 30px; padding-block: 0; font-size: 12px; }
-	.sort-direction { width: 30px; min-height: 30px; padding: 0; font-size: 14px; }
-	.more-filters { display: flex; align-items: center; justify-content: center; gap: 4px; min-height: 30px; padding: 0 8px; border-color: transparent; background: transparent; color: var(--text-2); font-size: 12px; }
-	.more-filters .icon { width: 14px; height: 14px; }
-	.more-filters[aria-expanded='true'] { color: var(--text); }
-	.bpm-range { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 4px; color: var(--text-3); }
-	.bpm-range input { width: 100%; min-width: 0; min-height: 36px; padding: 0 8px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface-2); color: var(--text); }
-	.clear { min-height: 24px; padding: 0 8px; border-color: transparent; background: transparent; color: var(--accent); font-size: 12px; }
-	.song-levels { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
-	.song-levels b { padding: 0 6px; border-radius: 4px; background: color-mix(in srgb, var(--difficulty) 18%, transparent); color: var(--difficulty); font-size: 10.5px; line-height: 18px; }
-	.songs { position: relative; flex: 1; min-height: 0; margin: 0 -12px; padding: 0 6px 12px; overflow-y: auto; overscroll-behavior: contain; list-style: none; }
-	.songs li { content-visibility: auto; contain-intrinsic-size: auto 50px; }
-	.songs a { display: grid; gap: 1px; padding: 8px 10px; border-radius: 8px; color: var(--text); text-decoration: none; }
-	.songs a[aria-current='page'] { background: color-mix(in srgb, var(--accent) 14%, transparent); box-shadow: inset 3px 0 var(--accent); }
-	@media (hover: hover) { .songs a:hover { background: var(--surface-3); } }
-	.song-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
-	.song-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-size: 11.5px; }
-	.dx { margin-right: 6px; padding: 0 4px; border-radius: 3px; background: #2a3a55; color: #ffd36b; font-size: 10px; }
-	.empty-search { padding: 20px 10px; color: var(--text-3); font-size: 13px; text-align: center; }
 	h2 { margin: 2px 0 2px; font-size: 19px; line-height: 1.35; overflow-wrap: anywhere; }
 	h3 { margin: 22px 0 8px; color: var(--text-3); font-size: 11px; font-weight: 700; letter-spacing: .08em; }
 	.artist { margin: 0; color: var(--text-2); font-size: 13px; }
@@ -870,9 +708,7 @@
 		.tabs { margin-top: 6px; }
 		.tabs button { min-height: 38px; }
 		.backdrop { display: block; position: absolute; inset: 0; z-index: 2; width: 100%; max-width: none; border: 0; border-radius: 0; background: #000a; animation: fade-in .2s; }
-		.search input, select { font-size: 16px; }
-		.songs a { padding-block: 10px; }
-		.song-name { font-size: 15px; }
+		select { font-size: 16px; }
 		.density-legend { display: none; }
 		output { margin-right: auto; }
 		.rate span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
