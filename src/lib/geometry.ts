@@ -92,35 +92,6 @@ export function notePaths(segments: Segment[]) {
 	}, []);
 }
 
-export function inside(point: Point, polygon: Point[]) {
-	let hit = false;
-	for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-		const [a, b] = [polygon[i], polygon[j]];
-		if ((a.y > point.y) !== (b.y > point.y) && point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) hit = !hit;
-	}
-	return hit;
-}
-
-// Share of a path's length at which it last enters `polygon`, sampled every couple of units along the way.
-export function lastEntry(points: Point[], polygon: Point[]) {
-	const lengths = points.slice(1).map((point, i) => distance(points[i], point));
-	const total = lengths.reduce((sum, value) => sum + value, 0);
-	if (!total) return 1;
-	let travelled = 0;
-	let entry = inside(points[0], polygon) ? 0 : 1;
-	let wasInside = entry === 0;
-	for (let i = 0; i < lengths.length; i++) {
-		const steps = Math.max(1, Math.ceil(lengths[i] / 2));
-		for (let step = 1; step <= steps; step++) {
-			const isInside = inside(mix(points[i], points[i + 1], step / steps), polygon);
-			if (isInside && !wasInside) entry = (travelled + lengths[i] * step / steps) / total;
-			wasInside = isInside;
-		}
-		travelled += lengths[i];
-	}
-	return wasInside ? entry : 1;
-}
-
 export const pathData = (points: Point[]) => points.map((point, i) => `${i ? 'L' : 'M'}${point.x},${point.y}`).join(' ');
 export const star = (point: Point, radius = 17) => Array.from({ length: 10 }, (_, i) => {
 	const angle = -Math.PI / 2 + i * Math.PI / 5;

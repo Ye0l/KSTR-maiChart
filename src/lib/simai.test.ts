@@ -3,10 +3,10 @@ import { readFile, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import test from 'node:test';
 import { parseChart, readMaidata } from './simai.ts';
-import { distance, inside, lastEntry, notePaths, position, slidePath, trace } from './geometry.ts';
-import { aSensorPolygon, sensorPolygon } from './sensor-layout.ts';
+import { distance, position, slidePath, trace } from './geometry.ts';
+import { sensorPolygon } from './sensor-layout.ts';
 import { markSimultaneous, noteColor } from './presentation.ts';
-import { pressMarks, pressMoments, slideJudgeTime } from './press.ts';
+import { pressMarks, pressMoments, slideJudgeTime, slideTable } from './press.ts';
 import { dueTicks } from './ticks.ts';
 import { listCharts, utageVersion } from './server/charts.ts';
 import { beatPosition, guideDepths, handPath, innerRadius, radial, sliceDepth, sliceWindow, shiftTime, sliceIndex, sliceInstants, sliceLabel, sliceSlot, slotFrame, timeAtBeat } from './slices.ts';
@@ -89,25 +89,32 @@ test('isometric SLIDE height follows path distance and the tracing interval', ()
 	}
 });
 
-test('A sensors hold their own button and none of the others', () => {
-	for (let n = 1; n <= 8; n++) {
-		for (let m = 1; m <= 8; m++) assert.equal(inside(position(String(m)), aSensorPolygon(n)), n === m, `button ${m} in A${n}`);
-		assert.equal(inside({ x: 300, y: 300 }, aSensorPolygon(n)), false);
-		assert.equal(inside(position(`B${n}`), aSensorPolygon(n)), false);
-	}
+test('slide shapes map to MajdataPlay judge tables, mirrored shapes onto their counterpart', () => {
+	const table = (shape: string, start: number, end: number, middle?: number) => slideTable({ shape, start, end, middle });
+	assert.equal(table('-', 1, 5), 'line5');
+	assert.equal(table('-', 8, 3), 'line4');
+	assert.equal(table('>', 1, 3), 'circle3', 'clockwise from the upper half');
+	assert.equal(table('<', 1, 7), 'circle3', 'its mirror');
+	assert.equal(table('>', 5, 3), 'circle3', 'counter-clockwise from the lower half');
+	assert.equal(table('>', 1, 1), 'circle1');
+	assert.equal(table('^', 1, 7), 'circle3');
+	assert.equal(table('q', 1, 4), 'pq6');
+	assert.equal(table('qq', 2, 2), 'ppqq1');
+	assert.equal(table('z', 3, 7), 's');
+	assert.equal(table('V', 1, 4, 7), 'L4');
+	assert.equal(table('V', 1, 6, 3), 'L4');
+	assert.equal(table('w', 1, 5), 'wifi');
 });
 
-test('a SLIDE is judged when its star enters the last A sensor, before it reaches the button', () => {
-	const straight = notePaths([{ shape: '-', start: 1, end: 5 }])[0];
-	const share = lastEntry(straight, aSensorPolygon(5));
-	assert.ok(share > .75 && share < .95, `straight slide judged at ${share}`);
-	const loop = notePaths([{ shape: '>', start: 1, end: 1 }])[0];
-	assert.ok(lastEntry(loop, aSensorPolygon(1)) > .8, 'a full loop is judged on the way back into its own sensor');
-	const note = markSimultaneous(parseChart('(120){4}1-5[4:1],E', 120, 0).notes).find(note => note.kind === 'slide')!;
-	close(slideJudgeTime(note), .5 + .5 * share);
-	const fan = markSimultaneous(parseChart('(120){4}1w5[4:1],E', 120, 0).notes).find(note => note.kind === 'slide')!;
-	const judged = slideJudgeTime(fan);
-	assert.ok(judged > .5 && judged < 1, 'a fan is judged once every star is in its end sensor');
+test('a SLIDE is perfect a measured share before its star finishes, so touching at the very end is late', () => {
+	const slide = (source: string) => markSimultaneous(parseChart(source, 120, 0).notes).find(note => note.kind === 'slide')!;
+	close(slideJudgeTime(slide('(120){4}1-5[4:1],E')), 1 - .5 * .152);
+	close(slideJudgeTime(slide('(120){4}1>3[4:1],E')), 1 - .5 * .233);
+	close(slideJudgeTime(slide('(120){4}1w5[4:1],E')), 1 - .5 * .16287);
+	// One duration over a chain: the last part's share of it goes by path length.
+	const chain = slide('(120){4}1-3-5[4:1],E');
+	const lengths = chain.segments.map(segment => slidePath(segment)[0]).map(points => points.slice(1).reduce((sum, point, i) => sum + distance(points[i], point), 0));
+	close(slideJudgeTime(chain), 1 - .5 * lengths[1] / (lengths[0] + lengths[1]) * .182);
 });
 
 test('press moments cover TAP, HOLD start, star and SLIDE end but not TOUCH', () => {
@@ -115,14 +122,14 @@ test('press moments cover TAP, HOLD start, star and SLIDE end but not TOUCH', ()
 	const presses = pressMoments(markSimultaneous(chart.notes));
 	assert.deepEqual(presses.slice(0, 3).map(press => [press.time, press.button]), [[0, '1'], [.5, '2'], [1, '3']]);
 	assert.equal(presses[3].button, '5');
-	assert.ok(presses[3].time > 1.5 && presses[3].time < 2, 'the slide end is judged on entering A5, before the star reaches it');
+	close(presses[3].time, 2 - .5 * .182);
 });
 
 test('a SLIDE with per-segment timings is judged only where the chain finishes', () => {
 	const chart = parseChart('(120){4}1-3[4:1]-5[4:1],E', 120, 0);
 	const presses = pressMoments(markSimultaneous(chart.notes));
 	assert.deepEqual(presses.map(press => press.button), ['1', '5']);
-	assert.ok(presses[1].time > 1 && presses[1].time < 1.5, 'only the final part, judged as it enters A5');
+	close(presses[1].time, 1.5 - .5 * .182);
 });
 
 test('press highlights keep the newest press per button and fade over the chosen beats', () => {
@@ -165,7 +172,7 @@ test('time slices file every input instant under its beat window, SLIDE at its e
 	const chart = parseChart('(120){4}1/5,2h[4:1],3-7[4:1],B1/C,E', 120, 0);
 	const notes = markSimultaneous(chart.notes).map(note => ({ ...note, paths: [] }));
 	const describe = (length: number) => [...sliceInstants(notes, chart.tempo, length)].map(([index, instants]) => [index, instants.map(instant => instant.items.map(item => `${item.kind}:${item.position}`).join('/'))]);
-	// The slide ends at 2s but is judged on entering A7, inside the fourth beat.
+	// The slide ends at 2s but its perfect moment falls inside the fourth beat.
 	assert.deepEqual(describe(1), [[0, ['tap:1/tap:5']], [1, ['hold:2']], [2, ['star:3']], [3, ['touch:B1/touch:C', 'slide:7']]]);
 	assert.deepEqual(describe(2), [[0, ['tap:1/tap:5', 'hold:2']], [1, ['star:3', 'touch:B1/touch:C', 'slide:7']]]);
 });

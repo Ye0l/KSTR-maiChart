@@ -24,15 +24,3 @@ export function sensorCenter(family: 'B' | 'E', index: number) {
 export function sensorPolygon(family: 'B' | 'E', index: number) {
 	return sensorOutlines[family].map(([x, y]) => sensorPoint(x, y, index));
 }
-
-// A sensors run out past the rim, so the edge is closed by an arc beyond it; star paths ending on a button stay inside.
-export function aSensorPolygon(index: number) {
-	const [last, first] = [aSensorEdge.at(-1)!, aSensorEdge[0]];
-	const from = Math.atan2(last[1], last[0]);
-	const to = Math.atan2(first[1], first[0]);
-	const arc = Array.from({ length: 9 }, (_, i) => {
-		const angle = from + (to - from) * i / 8;
-		return [560 * Math.cos(angle), 560 * Math.sin(angle)];
-	});
-	return [...aSensorEdge, ...arc].map(([x, y]) => sensorPoint(x, y, index));
-}
