@@ -1,16 +1,21 @@
 import { clamp, distance, trace, type Point } from './geometry.ts';
 
-const horizontal = .64;
-const vertical = horizontal / Math.sqrt(3);
-const originY = 540 - 600 * vertical;
+// The board only tilts back (no rotation), so button 1/8 straddle 12 o'clock as in game.
+const scaleX = .905;
+const scaleY = scaleX / Math.sqrt(3);
+const centerY = (sceneHeight: number) => sceneHeight - 180;
 // The front rim must also start above the viewport, not just the back of the tilted plane.
-export const dropDistance = (sceneHeight = 720) => sceneHeight - 180 + 254 * Math.SQRT2 * vertical + 24;
-export const planeTransform = (height = 0, sceneHeight = 720) => `matrix(${horizontal} ${vertical} ${-horizontal} ${vertical} 300 ${originY + (sceneHeight - 720) - height})`;
+export const dropDistance = (sceneHeight = 720) => sceneHeight - 180 + 254 * scaleY + 24;
+export const planeTransform = (height = 0, sceneHeight = 720) => `matrix(${scaleX} 0 0 ${scaleY} ${300 - 300 * scaleX} ${centerY(sceneHeight) - 300 * scaleY - height})`;
 export const fallHeight = (at: number, time: number, approach: number, sceneHeight = 720) => Math.max(0, (at - time) / approach * dropDistance(sceneHeight));
-export const depthOpacity = (point: Point) => point.x + point.y < 600 ? .45 : 1;
+// Notes fade in as their hit nears so the next one to press stands out. Height is proportional to the time left;
+// the scale runs over the visible column (board centre to the top edge), since notes spawn above the viewport.
+// The curve keeps the upper half faint: 15% at the top edge, 30% halfway down, full on the board.
+const fadeCurve = Math.log(.15 / .85) / Math.log(.5);
+export const timeOpacity = (lift: number, sceneHeight = 720) => .15 + .85 * clamp(1 - lift / (sceneHeight - 180)) ** fadeCurve;
 
 export function project(point: Point, height = 0, sceneHeight = 720): Point {
-	return { x: 300 + horizontal * (point.x - point.y), y: originY + (sceneHeight - 720) + vertical * (point.x + point.y) - height };
+	return { x: 300 + scaleX * (point.x - 300), y: centerY(sceneHeight) + scaleY * (point.y - 300) - height };
 }
 
 // Lift the same arc-length interpolation used by the game view onto the time axis.
@@ -41,7 +46,8 @@ export function beatsBetween(tempo: { time: number; bpm: number }[], from: numbe
 	return beats;
 }
 
-// Arc pieces spanning one button sector (±45°) on each side of a point, weighted 1 at the point and 0 at the neighbours.
+// Arc pieces spanning ±30° on each side of a point (two thirds of the way to the neighbouring buttons), weighted 1 at the point and 0 at the ends.
+export const sectorSpan = Math.PI / 6;
 const sectorArcs = new Map<string, { d: string; weight: number }[]>();
 export function sectorArc(point: Point, pieces = 12) {
 	const key = `${point.x},${point.y},${pieces}`;
@@ -50,8 +56,8 @@ export function sectorArc(point: Point, pieces = 12) {
 	const angle = Math.atan2(point.y - 300, point.x - 300);
 	const at = (theta: number) => `${300 + 254 * Math.cos(theta)},${300 + 254 * Math.sin(theta)}`;
 	const arcs = Array.from({ length: pieces }, (_, i) => {
-		const a = angle + (i / pieces * 2 - 1) * Math.PI / 4;
-		const b = angle + ((i + 1) / pieces * 2 - 1) * Math.PI / 4;
+		const a = angle + (i / pieces * 2 - 1) * sectorSpan;
+		const b = angle + ((i + 1) / pieces * 2 - 1) * sectorSpan;
 		return { d: `M${at(a)} A254,254 0 0 1 ${at(b)}`, weight: 1 - Math.abs((i + .5) / pieces * 2 - 1) };
 	});
 	sectorArcs.set(key, arcs);

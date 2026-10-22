@@ -3,10 +3,11 @@
 	import { noteColor, type DisplayNote } from './presentation.ts';
 	import { clamp, star } from './geometry.ts';
 	import { beatsBetween } from './isometric.ts';
+	import type { PressMark } from './press.ts';
 
-	let { notes, time, noteSpeed, touchSpeed, tempo }: {
+	let { notes, time, noteSpeed, touchSpeed, tempo, marks }: {
 		notes: DisplayNote[]; time: number; noteSpeed: number; touchSpeed: number;
-		tempo: { time: number; bpm: number }[];
+		tempo: { time: number; bpm: number }[]; marks: PressMark[];
 	} = $props();
 	const lanes = Array.from({ length: 8 }, (_, i) => i + 1);
 	let canvas: SVGSVGElement | undefined;
@@ -26,7 +27,8 @@
 		return () => observer.disconnect();
 	});
 	const approach = (note: DisplayNote) => 2 / (note.kind.startsWith('touch') ? touchSpeed : noteSpeed);
-	const x = (id: string) => 40 + ((id.startsWith('C') ? 4.5 : Number(id.at(-1))) - .5) * 65;
+	// Lane 1 sits on the right as in game, where button 1 is just right of 12 o'clock.
+	const x = (id: string) => 40 + (8.5 - (id.startsWith('C') ? 4.5 : Number(id.at(-1)))) * 65;
 	const y = (at: number, note: DisplayNote) => hitY - (at - time) / approach(note) * (hitY - top);
 	// Beat lines fall at the button-note rate so they measure the notes around them.
 	const beats = $derived(beatsBetween(tempo, time, time + 2 / noteSpeed).map((beat) => ({ ...beat, y: hitY - (beat.time - time) / (2 / noteSpeed) * (hitY - top) })));
@@ -42,6 +44,9 @@
 		<text class="lane-label" x={x(String(lane))} y={hitY + 22 * unit} data-lane={lane}>{lane}</text>
 	{/each}
 	<line x1="40" y1={hitY} x2="560" y2={hitY} stroke="#bdc9df" stroke-width="3" />
+	{#each marks as mark}
+		<rect class="press-mark" data-button={mark.button} x={x(mark.button) - 30} y={hitY - 16} width="60" height="32" rx="8" fill={mark.color} fill-opacity=".3" stroke={mark.color} stroke-width="3" opacity={mark.strength} pointer-events="none" />
+	{/each}
 	<g clip-path="url(#flat-playfield)">
 		{#each beats as beat}
 			<line class="beat-line" x1="40" x2="560" y1={beat.y} y2={beat.y} stroke="#9fb0d0" stroke-width={beat.downbeat ? 2 : 1} opacity={beat.downbeat ? .35 : .15} />

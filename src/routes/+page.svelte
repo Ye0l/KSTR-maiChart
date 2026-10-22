@@ -1,20 +1,20 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { asset } from '$app/paths';
 	import type { PageData } from './$types';
 	import { parseChart, readMaidata, type Note } from '#lib/simai.ts';
-	import { chevrons, clamp, mix, position, slidePath, star, trace } from '#lib/geometry.ts';
+	import { chevrons, clamp, mix, notePaths, position, star, trace } from '#lib/geometry.ts';
 	import SensorLayout from '#lib/SensorLayout.svelte';
 	import FlatView from '#lib/FlatView.svelte';
 	import IsometricView from '#lib/IsometricView.svelte';
+	import SliceView from '#lib/SliceView.svelte';
+	import SongPicker from '#lib/SongPicker.svelte';
+	import { describeSong, difficultyColor, difficultyName, isUtage } from '#lib/catalog.ts';
+	import { defaultSliceCount, defaultSliceLength, sliceCounts, sliceLengths } from '#lib/slices.ts';
 	import { markSimultaneous, noteColor as color } from '#lib/presentation.ts';
-
-// Covers are generated before dev/build, so their names are outside SvelteKit's static-asset type union.
-const coverUrl = (cover: string, ext: 'webp' | 'jpg') => asset(`covers/${cover}.${ext}` as Parameters<typeof asset>[0]);
+	import { createTicker } from '#lib/ticks.ts';
+	import { defaultTrail, pressMarks, pressMoments, trailOptions, trailUnits, type TrailUnit } from '#lib/press.ts';
 
 	let { data }: { data: PageData } = $props();
-	const names = ['EASY', 'BASIC', 'ADVANCED', 'EXPERT', 'MASTER', 'Re:MASTER'];
-	const difficultyColors = ['#4ea6ff', '#4cd964', '#ffc23d', '#ff6b81', '#b77cff', '#e9d4ff'];
 	const legend = [
 		['#ff68b7', 'TAP / HOLD'], ['#ffdb4d', '동시입력'], ['#75edb0', 'TOUCH'],
 		['#57dfff', 'SLIDE'], ['#ff9a35', 'BREAK (최우선)'], ['transparent', 'EX (흰 테두리)']
@@ -23,20 +23,30 @@ const coverUrl = (cover: string, ext: 'webp' | 'jpg') => asset(`covers/${cover}.
 	let playing = $state(false);
 	let time = $state(0);
 	let rate = $state(1);
-	type ViewId = 'game' | 'flat' | 'isometric';
-	const viewLabels = { game: '게임', flat: '평면', isometric: 'Isometric' };
-	const viewIds: ViewId[] = ['game', 'flat', 'isometric'];
+	type ViewId = 'game' | 'flat' | 'isometric' | 'slice';
+	// The time slice view steps by note instants, so it has no approach speed.
+	type SpeedView = Exclude<ViewId, 'slice'>;
+	const viewLabels = { game: '게임', flat: '평면', isometric: 'Isometric', slice: '시간 단면' };
+	const viewIds: ViewId[] = ['game', 'flat', 'isometric', 'slice'];
+	const speedViews: SpeedView[] = ['game', 'flat', 'isometric'];
 	let activeViews = $state<ViewId[]>(['game']);
 	let viewSpeeds = $state({
 		game: { note: 6, touch: 6 },
-		flat: { note: 6, touch: 6 },
-		isometric: { note: 6, touch: 6 }
+		flat: { note: 2, touch: 2 },
+		isometric: { note: 2, touch: 2 }
 	});
 	let speedsLoaded = $state(false);
+	let sliceCount = $state(defaultSliceCount);
+	let sliceLength = $state(defaultSliceLength);
+	// How long a press highlight lingers, in notes or beats; -1 turns it off, 0 keeps only the hit flash.
+	let pressTrail = $state(defaultTrail);
+	let pressTrailUnit = $state<TrailUnit>('notes');
+	// A tick at every press moment, so the rhythm can be heard as well as seen.
+	let ticks = $state(true);
+	const ticker = createTicker();
 	const speedKinds = [['note', '노트'], ['touch', '터치']] as const;
 	const speeds = Array.from({ length: 37 }, (_, i) => 1 + i * .25);
 	const approachTime = (note: Note) => 2 / (note.kind.startsWith('touch') ? viewSpeeds.game.touch : viewSpeeds.game.note);
-	let search = $state('');
 	let paneOpen = $state(true);
 	let playerOpen = $state(true);
 	let speedsOpen = $state(false);
@@ -111,38 +121,14 @@ const coverUrl = (cover: string, ext: 'webp' | 'jpg') => asset(`covers/${cover}.
 	const displayNotes = $derived(markSimultaneous(chart.notes));
 	const prepared = $derived(displayNotes.map((note) => ({
 		...note,
-		paths: note.kind === 'slide' ? note.segments.reduce<ReturnType<typeof slidePath>>((paths, segment) => {
-			const next = slidePath(segment);
-			if (paths.length === 1 && next.length === 1) return [[...paths[0], ...next[0].slice(1)]];
-			return [...paths, ...next];
-		}, []) : []
+		paths: note.kind === 'slide' ? notePaths(note.segments) : []
 	})));
+	const presses = $derived(pressMoments(displayNotes));
+	const tickTimes = $derived(presses.map((press) => press.time));
+	const marks = $derived(pressMarks(presses, time, chart.tempo, pressTrail, pressTrailUnit));
 	const visible = $derived(prepared.filter((note) => note.time - approachTime(note) <= time && time <= note.time + note.wait + note.duration + .18));
-	const songs = $derived(data.songs.map((song) => {
-		const match = /^(\d+) · (.*?)( \[DX\])?$/.exec(song.title);
-		return { ...song, name: match?.[2] ?? song.title, number: match?.[1], dx: !!match?.[3], genre: song.id.split('/')[0] };
-	}));
-	const versionOrder = ['', ' PLUS', ' GreeN', ' GreeN PLUS', ' ORANGE', ' ORANGE PLUS', ' PiNK', ' PiNK PLUS', ' MURASAKi', ' MURASAKi PLUS', ' MiLK', ' MiLK PLUS', ' FiNALE',
-		' DX', ' DX PLUS', ' DX Splash', ' DX Splash PLUS', ' DX UNiVERSE', ' DX UNiVERSE PLUS', ' DX FESTiVAL', ' DX FESTiVAL PLUS', ' DX BUDDiES', ' DX BUDDiES PLUS',
-		' DX PRiSM', ' DX PRiSM PLUS', ' DX CiRCLE', ' DX CiRCLE PLUS'].map((name) => `maimai${name}`);
-	const versionRank = (version: string) => versionOrder.includes(version) ? versionOrder.indexOf(version) : versionOrder.length;
-	const versions = $derived([...new Set(data.songs.map((song) => song.version).filter(Boolean))].sort((a, b) => versionRank(a) - versionRank(b) || a.localeCompare(b)));
-	// Chart constants group the way the game shows them: x.0–x.6 is "x", x.7–x.9 is "x+"; a trailing "?" marks an estimate.
-	const levelLabel = (value: string) => {
-		const match = /^(\d+)(\+)?(?:\.(\d))?/.exec(value);
-		if (!match) return value;
-		return match[2] || Number(match[3] ?? 0) >= 7 ? `${match[1]}+` : match[1];
-	};
-	const levelRank = (label: string) => parseFloat(label) + (label.endsWith('+') ? .5 : 0);
-	const levelOptions = $derived([...new Set(data.songs.flatMap((song) => song.levels.map(([, value]) => levelLabel(value))))].sort((a, b) => levelRank(a) - levelRank(b) || a.localeCompare(b)));
-	let levelFilter = $state('');
-	let versionFilter = $state('');
-	const filteredSongs = $derived(songs.flatMap((song) => {
-		if (!song.title.toLowerCase().includes(search.toLowerCase()) || (versionFilter && song.version !== versionFilter)) return [];
-		const matches = levelFilter ? song.levels.filter(([, value]) => levelLabel(value) === levelFilter) : [];
-		return levelFilter && !matches.length ? [] : [{ ...song, matches }];
-	}));
-	let songList: HTMLUListElement | undefined = $state();
+	const songs = $derived(data.songs.map(describeSong));
+	let pickerOpen = $state(false);
 	// Stack order keeps SLIDE and TOUCH apart; their note colors are too close to sit side by side.
 	const densityKinds = [
 		{ key: 'tap', label: 'TAP·HOLD', color: '#ff68b7' },
@@ -191,20 +177,16 @@ const coverUrl = (cover: string, ext: 'webp' | 'jpg') => asset(`covers/${cover}.
 		}
 	});
 
-	$effect(() => {
-		data.selected;
-		if (!paneOpen || paneTab !== 'charts' || !songList) return;
-		// Bring the open chart into view without scrolling the page itself.
-		const item = songList.querySelector<HTMLElement>('[aria-current="page"]');
-		if (item && (item.offsetTop < songList.scrollTop || item.offsetTop + item.offsetHeight > songList.scrollTop + songList.clientHeight)) {
-			songList.scrollTop = item.offsetTop - (songList.clientHeight - item.offsetHeight) / 2;
-		}
-	});
 
 	$effect(() => {
 		if (!speedsLoaded) return;
 		try {
 			localStorage.setItem('maichart.speeds', JSON.stringify(viewSpeeds));
+			localStorage.setItem('maichart.pressTrail', String(pressTrail));
+			localStorage.setItem('maichart.pressTrailUnit', pressTrailUnit);
+			localStorage.setItem('maichart.ticks', String(ticks));
+			localStorage.setItem('maichart.sliceCount', String(sliceCount));
+			localStorage.setItem('maichart.sliceLength', String(sliceLength));
 		} catch {
 			// Storage may be blocked; keep the current session usable.
 		}
@@ -213,12 +195,21 @@ const coverUrl = (cover: string, ext: 'webp' | 'jpg') => asset(`covers/${cover}.
 	onMount(() => {
 		try {
 			const saved = JSON.parse(localStorage.getItem('maichart.speeds') ?? '{}');
-			for (const id of viewIds) {
+			for (const id of speedViews) {
 				// Preserve the previous shared settings when upgrading to per-view speeds.
 				const settings = saved?.[id] ?? saved;
 				if (speeds.includes(settings?.note)) viewSpeeds[id].note = settings.note;
 				if (speeds.includes(settings?.touch)) viewSpeeds[id].touch = settings.touch;
 			}
+			const trail = Number(localStorage.getItem('maichart.pressTrail') ?? NaN);
+			if (trailOptions.includes(trail)) pressTrail = trail;
+			const unit = localStorage.getItem('maichart.pressTrailUnit');
+			if (trailUnits.some(([value]) => value === unit)) pressTrailUnit = unit as TrailUnit;
+			if (localStorage.getItem('maichart.ticks') === 'false') ticks = false;
+			const slices = Number(localStorage.getItem('maichart.sliceCount'));
+			if (sliceCounts.includes(slices)) sliceCount = slices;
+			const beats = Number(localStorage.getItem('maichart.sliceLength'));
+			if (sliceLengths.some(([value]) => value === beats)) sliceLength = beats;
 		} catch {
 			// Invalid or inaccessible storage falls back to the defaults.
 		}
@@ -251,11 +242,18 @@ const coverUrl = (cover: string, ext: 'webp' | 'jpg') => asset(`covers/${cover}.
 		return () => cancelAnimationFrame(frame);
 	});
 
-	function stepSpeed(id: ViewId, kind: 'note' | 'touch', delta: number) {
+	function stepSpeed(id: SpeedView, kind: 'note' | 'touch', delta: number) {
 		viewSpeeds[id][kind] = Math.min(10, Math.max(1, viewSpeeds[id][kind] + delta));
 	}
 
+	$effect(() => {
+		if (!ticks || !playing) ticker.stop();
+		else ticker.update(tickTimes, time, rate);
+	});
+	$effect(() => () => ticker.stop());
+
 	function toggle() {
+		ticker.unlock();
 		if (time >= chart.duration) time = 0;
 		playing = !playing;
 	}
@@ -282,14 +280,14 @@ const coverUrl = (cover: string, ext: 'webp' | 'jpg') => asset(`covers/${cover}.
 		<button id="pane-toggle" class="icon-button" title={paneOpen ? '패널 접기' : '곡 · 정보 패널'} aria-label={paneOpen ? '좌측 패널 접기' : '좌측 패널 펼치기'} aria-expanded={paneOpen} aria-controls="side-pane" onclick={() => paneOpen = !paneOpen}><span class="icon icon-panel"></span></button>
 		<h1><span class="brand">mai</span>Chart</h1>
 		<div class="now-playing">
-			<span class="now-title">{fields.title}</span>
+			<button class="now-title" title="곡 선택" onclick={() => pickerOpen = true}>{fields.title}</button>
 			{#if activeDifficulty}
-				<span class="badge" style:--difficulty={difficultyColors[Number(activeDifficulty) - 1]}>{names[Number(activeDifficulty) - 1] ?? activeDifficulty} <b>{fields[`lv_${activeDifficulty}`] || '?'}</b></span>
+				<span class="badge" style:--difficulty={difficultyColor(activeDifficulty, isUtage(data.selected))}>{difficultyName(activeDifficulty, isUtage(data.selected), difficulties)} <b>{fields[`lv_${activeDifficulty}`] || '?'}</b></span>
 			{/if}
 		</div>
 		<div class="view-switch" role="group" aria-label="뷰 형태">
 			{#each viewIds as id}
-				<button id={`view-${id}`} aria-pressed={activeViews.includes(id)} onclick={() => toggleView(id)}>{viewLabels[id]}{id !== 'isometric' ? ' 뷰' : ''}</button>
+				<button id={`view-${id}`} aria-pressed={activeViews.includes(id)} onclick={() => toggleView(id)}>{viewLabels[id]}{id === 'game' || id === 'flat' ? ' 뷰' : ''}</button>
 			{/each}
 		</div>
 	</nav>
@@ -305,56 +303,12 @@ const coverUrl = (cover: string, ext: 'webp' | 'jpg') => asset(`covers/${cover}.
 			<div id="panel-charts" class="panel-content charts" role="tabpanel" aria-labelledby="tab-charts" hidden={paneTab !== 'charts'}>
 				<div class="difficulties" role="group" aria-label="난이도">
 					{#each difficulties as level}
-						<button class="difficulty" style:--difficulty={difficultyColors[Number(level) - 1]} aria-pressed={level === activeDifficulty} onclick={() => difficulty = level}>
-							<span>{names[Number(level) - 1] ?? level}</span><b>{fields[`lv_${level}`] || '?'}</b>
+						<button class="difficulty" style:--difficulty={difficultyColor(level, isUtage(data.selected))} aria-pressed={level === activeDifficulty} onclick={() => difficulty = level}>
+							<span>{difficultyName(level, isUtage(data.selected), difficulties)}</span><b>{fields[`lv_${level}`] || '?'}</b>
 						</button>
 					{/each}
 				</div>
-				<label class="search">
-					<span class="icon icon-search"></span>
-					<input id="search" type="search" placeholder="곡명 또는 ID 검색" aria-label="곡 검색" autocomplete="off" bind:value={search} />
-				</label>
-				<div class="filters">
-					<select aria-label="레벨 필터" bind:value={levelFilter}>
-						<option value="">레벨 전체</option>
-						{#each levelOptions as level}<option value={level}>Lv {level}</option>{/each}
-					</select>
-					<select aria-label="버전 필터" bind:value={versionFilter}>
-						<option value="">버전 전체</option>
-						{#each versions as version}<option value={version}>{version.replace(/^maimai (?=.)/, '')}</option>{/each}
-					</select>
-				</div>
-				<p class="count">
-					{filteredSongs.length === songs.length ? `전체 ${songs.length}곡` : `${filteredSongs.length} / ${songs.length}곡`}
-					{#if search || levelFilter || versionFilter}<button class="clear" onclick={() => { search = ''; levelFilter = ''; versionFilter = ''; }}>필터 해제</button>{/if}
-				</p>
-				<ul class="songs" bind:this={songList} aria-label="차트 목록" data-sveltekit-preload-data="tap" data-sveltekit-noscroll>
-					{#each filteredSongs as song (song.id)}
-						<li>
-							<a href={`?chart=${encodeURIComponent(song.id)}`} aria-current={song.id === data.selected ? 'page' : undefined} onclick={() => { if (song.matches.length) difficulty = song.matches.at(-1)![0]; }}>
-								<span class="song-cover">
-									{#if song.cover}
-										<picture>
-											<source srcset={coverUrl(song.cover, 'webp')} type="image/webp" />
-											<img src={coverUrl(song.cover, 'jpg')} alt="" width="40" height="40" loading="lazy" decoding="async" />
-										</picture>
-									{:else}
-										<span aria-hidden="true">♪</span>
-									{/if}
-								</span>
-								<span class="song-info">
-									<span class="song-name">{song.name}</span>
-									<span class="song-meta">{#if song.dx}<b class="dx">DX</b>{/if}{song.number ? `${song.number} · ` : ''}{song.genre}</span>
-									{#if song.matches.length}
-										<span class="song-levels">{#each song.matches as [level, value]}<b style:--difficulty={difficultyColors[Number(level) - 1]}>{names[Number(level) - 1] ?? level} {value}</b>{/each}</span>
-									{/if}
-								</span>
-							</a>
-						</li>
-					{:else}
-						<li class="empty-search">“{search}”에 맞는 곡이 없습니다.</li>
-					{/each}
-				</ul>
+				<button id="open-picker" class="open-picker" onclick={() => pickerOpen = true}><span class="icon icon-search"></span>곡 선택</button>
 			</div>
 			<div id="panel-info" class="panel-content" role="tabpanel" aria-labelledby="tab-info" tabindex="0" hidden={paneTab !== 'info'}>
 				<h2>{fields.title}</h2>
@@ -377,10 +331,10 @@ const coverUrl = (cover: string, ext: 'webp' | 'jpg') => asset(`covers/${cover}.
 						<ul>{#each chart.warnings as warning}<li>{warning}</li>{/each}</ul>
 					</details>
 				{/if}
-				<p class="hint">무음 자동 재생 · 슬라이드 경로는 근사 표시<br />플레이 화면에서 휠 또는 상하 스와이프로 탐색</p>
+				<p class="hint">음악 없이 틱 사운드로 자동 재생 · 슬라이드 경로는 근사 표시<br />플레이 화면에서 휠 또는 상하 스와이프로 탐색</p>
 			</div>
 		</aside>
-		<section id="chart-stage" class:split={activeViews.length > 1} style:--view-count={Math.max(1, activeViews.length)} aria-label="플레이 화면">
+		<section id="chart-stage" class:split={activeViews.length > 1} class:flat-column={activeViews.length > 1 && activeViews.includes('flat')} style:--view-count={Math.max(1, activeViews.length)} style:--other-count={Math.max(1, activeViews.length - 1)} aria-label="플레이 화면">
 			{#each activeViews as id (id)}
 			<div class="viewer" data-panel={id}>
 			{#if activeViews.length > 1}<span class="view-tag" aria-hidden="true">{viewLabels[id]}</span>{/if}
@@ -393,6 +347,10 @@ const coverUrl = (cover: string, ext: 'webp' | 'jpg') => asset(`covers/${cover}.
 					{@const target = position(button)}
 					<circle cx={target.x} cy={target.y} r="13" fill="#31394d" />
 					<text x={target.x} y={target.y + 5} text-anchor="middle" fill="#c8cfe0" font-size="14">{button}</text>
+				{/each}
+				{#each marks as mark}
+					{@const target = position(mark.button)}
+					<circle class="press-mark" data-button={mark.button} cx={target.x} cy={target.y} r="30" fill={mark.color} fill-opacity=".3" stroke={mark.color} stroke-width="4" opacity={mark.strength} pointer-events="none" />
 				{/each}
 				<!-- Tracks sit behind approaching notes. -->
 				{#each visible.filter((note) => note.kind === 'slide') as note}
@@ -446,10 +404,13 @@ const coverUrl = (cover: string, ext: 'webp' | 'jpg') => asset(`covers/${cover}.
 			</svg>
 			{/if}
 			{#if id === 'flat'}
-				<FlatView notes={displayNotes} {time} noteSpeed={viewSpeeds.flat.note} touchSpeed={viewSpeeds.flat.touch} tempo={chart.tempo} />
+				<FlatView notes={displayNotes} {time} {marks} noteSpeed={viewSpeeds.flat.note} touchSpeed={viewSpeeds.flat.touch} tempo={chart.tempo} />
+			{/if}
+			{#if id === 'slice'}
+				<SliceView notes={prepared} {time} tempo={chart.tempo} count={sliceCount} length={sliceLength} />
 			{/if}
 			{#if id === 'isometric'}
-				<IsometricView notes={prepared} {time} noteSpeed={viewSpeeds.isometric.note} touchSpeed={viewSpeeds.isometric.touch} tempo={chart.tempo} />
+				<IsometricView notes={prepared} {time} {marks} noteSpeed={viewSpeeds.isometric.note} touchSpeed={viewSpeeds.isometric.touch} tempo={chart.tempo} />
 			{/if}
 			</div>
 			{/each}
@@ -513,6 +474,7 @@ const coverUrl = (cover: string, ext: 'webp' | 'jpg') => asset(`covers/${cover}.
 			<div class="controls">
 				<button class="play" title={playing ? '일시정지' : '재생'} onclick={toggle}><span class="icon" class:icon-play={!playing} class:icon-pause={playing}></span><span class="sr-only">{playing ? '일시정지' : '재생'}</span></button>
 				<button class="icon-button" title="처음으로" onclick={() => { time = 0; playing = false; }}><span class="icon icon-restart"></span><span class="sr-only">처음</span></button>
+				<button id="tick-toggle" class="icon-button" title={ticks ? '틱 사운드 끄기' : '틱 사운드 켜기'} aria-pressed={ticks} onclick={() => { ticker.unlock(); ticks = !ticks; }}><span class="icon" class:icon-sound={ticks} class:icon-mute={!ticks}></span><span class="sr-only">틱 사운드</span></button>
 				<output>{timestamp(time)} <span>/ {timestamp(chart.duration)}</span></output>
 				<ul class="density-legend" aria-label="밀도 그래프 범례">
 					{#each densityKinds as kind}<li><i style:--swatch={kind.color}></i>{kind.label}</li>{/each}
@@ -527,6 +489,19 @@ const coverUrl = (cover: string, ext: 'webp' | 'jpg') => asset(`covers/${cover}.
 				{#each activeViews as id (id)}
 					<fieldset class="view-speeds">
 						<legend>{viewLabels[id]}</legend>
+						{#if id === 'slice'}
+							<div class="stepper">
+								<label for="slice-count">단면 수</label>
+								<button aria-label="단면 줄이기" disabled={sliceCount <= sliceCounts[0]} onclick={() => sliceCount--}>−</button>
+								<select id="slice-count" bind:value={sliceCount}>{#each sliceCounts as option}<option value={option}>{option}</option>{/each}</select>
+								<button aria-label="단면 늘리기" disabled={sliceCount >= sliceCounts.at(-1)!} onclick={() => sliceCount++}>+</button>
+							</div>
+							<div class="segmented four" role="radiogroup" aria-label="단면 길이">
+								{#each sliceLengths as [beats, label]}
+									<button id={`slice-length-${beats}`} role="radio" aria-checked={sliceLength === beats} onclick={() => sliceLength = beats}>{label}</button>
+								{/each}
+							</div>
+						{:else}
 						{#each speedKinds as [kind, label]}
 							<div class="stepper">
 								<label for={`${id}-${kind}-speed`}>{label}</label>
@@ -535,15 +510,31 @@ const coverUrl = (cover: string, ext: 'webp' | 'jpg') => asset(`covers/${cover}.
 								<button aria-label={`${viewLabels[id]} ${label} 배속 높이기`} disabled={viewSpeeds[id][kind] >= 10} onclick={() => stepSpeed(id, kind, .25)}>+</button>
 							</div>
 						{/each}
+						{/if}
 					</fieldset>
 				{:else}
 					<p class="hint">표시 중인 뷰가 없습니다.</p>
 				{/each}
+				<fieldset class="view-speeds">
+					<legend>누를 위치 강조</legend>
+					<div class="stepper">
+						<label for="press-trail">잔상</label>
+						<button aria-label="잔상 줄이기" disabled={pressTrail <= trailOptions[0]} onclick={() => pressTrail--}>−</button>
+						<select id="press-trail" bind:value={pressTrail}>{#each trailOptions as beats}<option value={beats}>{beats < 0 ? '없음' : beats}</option>{/each}</select>
+						<button aria-label="잔상 늘리기" disabled={pressTrail >= trailOptions.at(-1)!} onclick={() => pressTrail++}>+</button>
+					</div>
+					<div class="segmented" role="radiogroup" aria-label="잔상 단위">
+						{#each trailUnits as [unit, label]}
+							<button id={`press-trail-${unit}`} role="radio" aria-checked={pressTrailUnit === unit} onclick={() => pressTrailUnit = unit}>{label}</button>
+						{/each}
+					</div>
+				</fieldset>
 			</div>
 		</div>
 		<button class="player-toggle icon-button" title={playerOpen ? '재생바 접기' : '재생바 펼치기'} aria-label={playerOpen ? '재생바 접기' : '재생바 펼치기'} aria-expanded={playerOpen} aria-controls="player-content" onclick={() => playerOpen = !playerOpen}><span class="icon" class:icon-down={playerOpen} class:icon-up={!playerOpen}></span></button>
 	</footer>
 </main>
+<SongPicker {songs} selected={data.selected} bind:open={pickerOpen} onpick={(level) => { if (level) difficulty = level; }} />
 
 <style>
 	:global(:root) {
@@ -564,7 +555,10 @@ const coverUrl = (cover: string, ext: 'webp' | 'jpg') => asset(`covers/${cover}.
 		--tap: 40px;
 	}
 	:global(html) { touch-action: pan-x pan-y; }
-	:global(body) { margin: 0; background: var(--bg); color: var(--text); font-family: 'Pretendard Variable', Pretendard, system-ui, -apple-system, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; }
+	/* The app fills the viewport and scrolls only inside its panels; locking the document stops iOS bounce,
+	   pull-to-refresh and the page drifting when the keyboard or address bar moves. */
+	:global(html), :global(body) { height: 100%; overflow: hidden; overscroll-behavior: none; }
+	:global(body) { position: fixed; inset: 0; margin: 0; background: var(--bg); color: var(--text); font-family: 'Pretendard Variable', Pretendard, system-ui, -apple-system, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; }
 	:global(*) { box-sizing: border-box; }
 	[hidden] { display: none !important; }
 	.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -584,20 +578,26 @@ const coverUrl = (cover: string, ext: 'webp' | 'jpg') => asset(`covers/${cover}.
 	.icon-search { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='6.5'/%3E%3Cpath d='m16 16 4.5 4.5'/%3E%3C/svg%3E"); }
 	.icon-play { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M8 4.8v14.4a1 1 0 0 0 1.5.86l11.6-7.2a1 1 0 0 0 0-1.72L9.5 3.94A1 1 0 0 0 8 4.8Z'/%3E%3C/svg%3E"); }
 	.icon-pause { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='5.5' y='4' width='4.5' height='16' rx='1.2'/%3E%3Crect x='14' y='4' width='4.5' height='16' rx='1.2'/%3E%3C/svg%3E"); }
+	.icon-sound { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 9.5h3.5L12 5.5v13l-4.5-4H4z' fill='black'/%3E%3Cpath d='M15.5 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11'/%3E%3C/svg%3E"); }
+	.icon-mute { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 9.5h3.5L12 5.5v13l-4.5-4H4z' fill='black'/%3E%3Cpath d='m16 9.5 5 5M21 9.5l-5 5'/%3E%3C/svg%3E"); }
 	.icon-restart { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='4.5' y='5' width='3' height='14' rx='1'/%3E%3Cpath d='M19.5 5.9v12.2a1 1 0 0 1-1.55.83L9.2 12.83a1 1 0 0 1 0-1.66l8.75-6.1a1 1 0 0 1 1.55.83Z'/%3E%3C/svg%3E"); }
 	.icon-sliders { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M4 7h9m4 0h3M4 17h3m4 0h9'/%3E%3Ccircle cx='15' cy='7' r='2.2'/%3E%3Ccircle cx='9' cy='17' r='2.2'/%3E%3C/svg%3E"); }
 	.icon-down { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9.5 6 6 6-6'/%3E%3C/svg%3E"); }
 	.icon-up { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 14.5 6-6 6 6'/%3E%3C/svg%3E"); }
 	.icon-button { width: var(--tap); height: var(--tap); padding: 0; border-color: transparent; background: transparent; color: var(--text-2); }
 	.icon-button[aria-expanded='true'] { color: var(--text); }
+	.icon-button[aria-pressed='true'] { color: var(--accent); }
 
 	/* Shell */
-	main { height: 100dvh; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; }
+	main { height: 100dvh; padding-inline: env(safe-area-inset-left) env(safe-area-inset-right); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; }
 	nav { display: flex; align-items: center; gap: 8px 14px; min-height: 56px; padding: max(8px, env(safe-area-inset-top)) 14px 8px 8px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 92%, transparent); }
 	h1 { margin: 0; font-size: 19px; font-weight: 800; letter-spacing: -.02em; white-space: nowrap; }
 	.brand { background: linear-gradient(100deg, var(--pink), var(--accent)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 	.now-playing { display: flex; align-items: center; gap: 10px; min-width: 0; padding-left: 14px; border-left: 1px solid var(--border); }
-	.now-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
+	.now-title { display: block; min-width: 0; min-height: 32px; overflow: hidden; padding: 0 8px; border-color: transparent; background: transparent; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
+	@media (hover: hover) { .now-title:hover { background: var(--surface-3); } }
+	.open-picker { width: 100%; min-height: 44px; font-size: 15px; font-weight: 600; }
+	.open-picker .icon { width: 18px; height: 18px; }
 	.badge { flex: none; padding: 3px 8px; border: 1px solid color-mix(in srgb, var(--difficulty) 55%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--difficulty) 16%, transparent); color: var(--difficulty); font-size: 11px; font-weight: 700; letter-spacing: .03em; white-space: nowrap; }
 	.badge b { color: var(--text); font-variant-numeric: tabular-nums; }
 	.view-switch { display: flex; flex-shrink: 0; gap: 2px; margin-left: auto; padding: 3px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
@@ -619,28 +619,6 @@ const coverUrl = (cover: string, ext: 'webp' | 'jpg') => asset(`covers/${cover}.
 	.difficulty b { font-size: 16px; font-variant-numeric: tabular-nums; }
 	.difficulty[aria-pressed='true'] { border-color: var(--difficulty); background: color-mix(in srgb, var(--difficulty) 18%, var(--surface-2)); }
 	.difficulty[aria-pressed='true'] span { color: var(--difficulty); }
-	.search { position: relative; display: block; margin-top: 4px; }
-	.search .icon { position: absolute; left: 11px; top: 50%; width: 17px; height: 17px; translate: 0 -50%; color: var(--text-3); pointer-events: none; }
-	.search input { width: 100%; min-height: 40px; padding: 0 12px 0 36px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface-2); font-size: 14px; }
-	.search input::placeholder { color: var(--text-3); }
-	.filters { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-	.filters select { width: 100%; }
-	.count { display: flex; align-items: center; justify-content: space-between; min-height: 24px; margin: 0; color: var(--text-3); font-size: 12px; }
-	.clear { min-height: 24px; padding: 0 8px; border-color: transparent; background: transparent; color: var(--accent); font-size: 12px; }
-	.song-levels { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
-	.song-levels b { padding: 0 6px; border-radius: 4px; background: color-mix(in srgb, var(--difficulty) 18%, transparent); color: var(--difficulty); font-size: 10.5px; line-height: 18px; }
-	.songs { position: relative; flex: 1; min-height: 0; margin: 0 -12px; padding: 0 6px 12px; overflow-y: auto; overscroll-behavior: contain; list-style: none; }
-	.songs li { content-visibility: auto; contain-intrinsic-size: auto 58px; }
-	.songs a { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; align-items: center; padding: 8px 10px; border-radius: 8px; color: var(--text); text-decoration: none; }
-	.songs a[aria-current='page'] { background: color-mix(in srgb, var(--accent) 14%, transparent); box-shadow: inset 3px 0 var(--accent); }
-	@media (hover: hover) { .songs a:hover { background: var(--surface-3); } }
-	.song-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
-	.song-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-size: 11.5px; }
-	.song-info { display: grid; gap: 1px; min-width: 0; }
-	.song-cover { display: grid; place-items: center; width: 40px; height: 40px; overflow: hidden; border-radius: 6px; background: var(--surface-3); color: var(--text-3); font-size: 18px; }
-	.song-cover img { width: 100%; height: 100%; object-fit: cover; }
-	.dx { margin-right: 6px; padding: 0 4px; border-radius: 3px; background: #2a3a55; color: #ffd36b; font-size: 10px; }
-	.empty-search { padding: 20px 10px; color: var(--text-3); font-size: 13px; text-align: center; }
 	h2 { margin: 2px 0 2px; font-size: 19px; line-height: 1.35; overflow-wrap: anywhere; }
 	h3 { margin: 22px 0 8px; color: var(--text-3); font-size: 11px; font-weight: 700; letter-spacing: .08em; }
 	.artist { margin: 0; color: var(--text-2); font-size: 13px; }
@@ -703,6 +681,10 @@ const coverUrl = (cover: string, ext: 'webp' | 'jpg') => asset(`covers/${cover}.
 	.stepper { display: grid; grid-template-columns: 1fr 40px 84px 40px; align-items: center; gap: 6px; font-size: 13px; }
 	.stepper button { min-height: 36px; padding: 0; font-size: 18px; }
 	.stepper select { text-align: center; }
+	.segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+	.segmented.four { grid-template-columns: repeat(4, 1fr); }
+	.segmented button { min-height: 32px; font-size: 13px; }
+	.segmented button[aria-checked='true'] { border-color: var(--accent); color: var(--accent); }
 
 	@media (max-width: 720px) {
 		/* The pane opens as a bottom sheet here, so a sidebar glyph would mislead. */
@@ -716,14 +698,16 @@ const coverUrl = (cover: string, ext: 'webp' | 'jpg') => asset(`covers/${cover}.
 		.view-switch button { flex: 1; min-height: 34px; padding-inline: 4px; }
 		section { padding: 8px; }
 		section.split { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(var(--view-count), minmax(0, 1fr)); gap: 8px; }
+		/* The flat view reads best tall, so beside other views it takes a full-height column on the right. */
+		section.split.flat-column { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); grid-template-rows: repeat(var(--other-count), minmax(0, 1fr)); }
+		.flat-column .viewer { grid-column: 1; }
+		.flat-column .viewer[data-panel='flat'] { grid-column: 2; grid-row: 1 / -1; }
 		aside { position: absolute; bottom: 0; left: 0; z-index: 3; width: 100%; height: min(85%, 640px); padding-top: 14px; border: 1px solid var(--border-strong); border-bottom: 0; border-radius: 18px 18px 0 0; box-shadow: 0 -16px 48px #000b; animation: sheet-in .22s cubic-bezier(.2, .8, .2, 1); }
 		aside::before { content: ''; position: absolute; top: 6px; left: 50%; width: 36px; height: 4px; translate: -50% 0; border-radius: 2px; background: var(--border-strong); }
 		.tabs { margin-top: 6px; }
 		.tabs button { min-height: 38px; }
 		.backdrop { display: block; position: absolute; inset: 0; z-index: 2; width: 100%; max-width: none; border: 0; border-radius: 0; background: #000a; animation: fade-in .2s; }
-		.search input, select { font-size: 16px; }
-		.songs a { padding-block: 10px; }
-		.song-name { font-size: 15px; }
+		select { font-size: 16px; }
 		.density-legend { display: none; }
 		output { margin-right: auto; }
 		.rate span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }

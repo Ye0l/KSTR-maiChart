@@ -6,7 +6,11 @@ import { parseChart, readMaidata } from './simai.ts';
 import { distance, position, slidePath, trace } from './geometry.ts';
 import { sensorPolygon } from './sensor-layout.ts';
 import { markSimultaneous, noteColor } from './presentation.ts';
-import { beatsBetween, depthOpacity, dropDistance, fallHeight, project, projectSlide, sectorArc } from './isometric.ts';
+import { pressMarks, pressMoments, slideJudgeTime, slideTable } from './press.ts';
+import { dueTicks } from './ticks.ts';
+import { listCharts, utageVersion } from './server/charts.ts';
+import { beatPosition, guideDepths, handPath, innerRadius, radial, sliceDepth, sliceWindow, shiftTime, sliceIndex, sliceInstants, sliceLabel, sliceSlot, slotFrame, timeAtBeat } from './slices.ts';
+import { beatsBetween, dropDistance, fallHeight, project, projectSlide, sectorArc, sectorSpan, timeOpacity } from './isometric.ts';
 
 const close = (actual: number, expected: number) => assert.ok(Math.abs(actual - expected) < 1e-8, `${actual} != ${expected}`);
 
@@ -17,7 +21,7 @@ test('tempo records BPM changes and the beat grid restarts at each change', () =
 	assert.deepEqual(beatsBetween(chart.tempo, 0, 2).filter(beat => beat.downbeat).map(beat => beat.time), [.5, 1.5]);
 });
 
-test('sector emphasis peaks at the note and fades to nothing at the neighbouring buttons', () => {
+test('sector emphasis peaks at the note and fades out short of the neighbouring buttons', () => {
 	const pieces = sectorArc(position('3'));
 	assert.equal(pieces.length, 12);
 	assert.ok(pieces[5].weight > .9 && pieces[6].weight > .9);
@@ -26,15 +30,19 @@ test('sector emphasis peaks at the note and fades to nothing at the neighbouring
 	const [start] = ends(pieces[0].d);
 	const end = ends(pieces[11].d).at(-1)!;
 	for (const [x, y] of [start, end]) close(Math.hypot(x - 300, y - 300), 254);
-	assert.ok(Math.abs(Math.atan2(start[1] - 300, start[0] - 300) - Math.atan2(position('2').y - 300, position('2').x - 300)) < 1e-3, 'sector ends at button 2');
-	assert.ok(Math.abs(Math.atan2(end[1] - 300, end[0] - 300) - Math.atan2(position('4').y - 300, position('4').x - 300)) < 1e-3, 'sector ends at button 4');
+	const angle = Math.atan2(position('3').y - 300, position('3').x - 300);
+	assert.ok(sectorSpan < Math.PI / 4, 'sector stops before the neighbouring buttons');
+	assert.ok(Math.abs(Math.atan2(start[1] - 300, start[0] - 300) - (angle - sectorSpan)) < 1e-3, 'sector starts toward button 2');
+	assert.ok(Math.abs(Math.atan2(end[1] - 300, end[0] - 300) - (angle + sectorSpan)) < 1e-3, 'sector ends toward button 4');
 });
 
-test('isometric rear four lanes are lighter while front lanes and center stay opaque', () => {
-	for (let lane = 1; lane <= 8; lane++) {
-		assert.equal(depthOpacity(position(String(lane))), [1, 6, 7, 8].includes(lane) ? .45 : 1);
-	}
-	assert.equal(depthOpacity(position('C')), 1);
+test('isometric notes brighten as their hit nears, whatever lane they are in', () => {
+	close(timeOpacity(0), 1);
+	close(timeOpacity(270), .3);
+	assert.ok(timeOpacity(135) > .3 && timeOpacity(135) < 1);
+	close(timeOpacity(540), .15);
+	close(timeOpacity(dropDistance()), .15);
+	close(timeOpacity(535, 1250), .3);
 });
 
 test('isometric spawn starts above the top at every canvas height and sensor position', () => {
@@ -79,6 +87,156 @@ test('isometric SLIDE height follows path distance and the tracing interval', ()
 			assert.ok(projectSlide(path, .5, 1, .75, 2 / 6).every(point => Number.isFinite(point.x) && Number.isFinite(point.y)), shape);
 		}
 	}
+});
+
+test('slide shapes map to MajdataPlay judge tables, mirrored shapes onto their counterpart', () => {
+	const table = (shape: string, start: number, end: number, middle?: number) => slideTable({ shape, start, end, middle });
+	assert.equal(table('-', 1, 5), 'line5');
+	assert.equal(table('-', 8, 3), 'line4');
+	assert.equal(table('>', 1, 3), 'circle3', 'clockwise from the upper half');
+	assert.equal(table('<', 1, 7), 'circle3', 'its mirror');
+	assert.equal(table('>', 5, 3), 'circle3', 'counter-clockwise from the lower half');
+	assert.equal(table('>', 1, 1), 'circle1');
+	assert.equal(table('^', 1, 7), 'circle3');
+	assert.equal(table('q', 1, 4), 'pq6');
+	assert.equal(table('qq', 2, 2), 'ppqq1');
+	assert.equal(table('z', 3, 7), 's');
+	assert.equal(table('V', 1, 4, 7), 'L4');
+	assert.equal(table('V', 1, 6, 3), 'L4');
+	assert.equal(table('w', 1, 5), 'wifi');
+});
+
+test('a SLIDE is perfect a measured share before its star finishes, so touching at the very end is late', () => {
+	const slide = (source: string) => markSimultaneous(parseChart(source, 120, 0).notes).find(note => note.kind === 'slide')!;
+	close(slideJudgeTime(slide('(120){4}1-5[4:1],E')), 1 - .5 * .152);
+	close(slideJudgeTime(slide('(120){4}1>3[4:1],E')), 1 - .5 * .233);
+	close(slideJudgeTime(slide('(120){4}1w5[4:1],E')), 1 - .5 * .16287);
+	// One duration over a chain: the last part's share of it goes by path length.
+	const chain = slide('(120){4}1-3-5[4:1],E');
+	const lengths = chain.segments.map(segment => slidePath(segment)[0]).map(points => points.slice(1).reduce((sum, point, i) => sum + distance(points[i], point), 0));
+	close(slideJudgeTime(chain), 1 - .5 * lengths[1] / (lengths[0] + lengths[1]) * .182);
+});
+
+test('press moments cover TAP, HOLD start, star and SLIDE end but not TOUCH', () => {
+	const chart = parseChart('(120){4}1,2h[4:1],3-5[4:1],B1/C,E', 120, 0);
+	const presses = pressMoments(markSimultaneous(chart.notes));
+	assert.deepEqual(presses.slice(0, 3).map(press => [press.time, press.button]), [[0, '1'], [.5, '2'], [1, '3']]);
+	assert.equal(presses[3].button, '5');
+	close(presses[3].time, 2 - .5 * .182);
+});
+
+test('a SLIDE with per-segment timings is judged only where the chain finishes', () => {
+	const chart = parseChart('(120){4}1-3[4:1]-5[4:1],E', 120, 0);
+	const presses = pressMoments(markSimultaneous(chart.notes));
+	assert.deepEqual(presses.map(press => press.button), ['1', '5']);
+	close(presses[1].time, 1.5 - .5 * .182);
+});
+
+test('press highlights keep the newest press per button and fade over the chosen beats', () => {
+	const tempo = [{ time: 0, bpm: 120 }];
+	const presses = [{ time: 0, button: '1', color: 'a' }, { time: 1, button: '1', color: 'b' }, { time: 1, button: '2', color: 'c' }];
+	assert.deepEqual(pressMarks(presses, 1, tempo, -1), []);
+	assert.deepEqual(pressMarks(presses, 1, tempo, 4).map(mark => [mark.button, mark.color, mark.strength]), [['1', 'b', 1], ['2', 'c', 1]]);
+	close(pressMarks(presses, 1.5, tempo, 4)[0].strength, .75);
+	assert.deepEqual(pressMarks(presses, 3.1, tempo, 4), []);
+	assert.deepEqual(pressMarks(presses, .99, tempo, 4).map(mark => mark.button), ['1'], 'future presses are not shown');
+	assert.equal(pressMarks(presses, 1.1, tempo, 0).length, 2, 'zero beats still flashes on the hit');
+	assert.deepEqual(pressMarks(presses, 1.2, tempo, 0), []);
+});
+
+test('counting notes keeps the last press moments, a chord counting once, however far apart they are', () => {
+	const tempo = [{ time: 0, bpm: 120 }];
+	const presses = [
+		{ time: 0, button: '1', color: 'a' }, { time: 10, button: '2', color: 'b' }, { time: 10, button: '3', color: 'b' },
+		{ time: 10.1, button: '4', color: 'c' }, { time: 10.2, button: '1', color: 'd' }
+	];
+	const marks = (time: number, trail: number) => pressMarks(presses, time, tempo, trail, 'notes').map(mark => [mark.button, mark.color, mark.strength]).sort();
+	assert.deepEqual(marks(20, 4), [['1', 'd', 1], ['2', 'b', .5], ['3', 'b', .5], ['4', 'c', .75]], 'old presses stay until newer notes push them out');
+	assert.deepEqual(marks(20, 2), [['1', 'd', 1], ['4', 'c', .5]]);
+	assert.deepEqual(marks(5, 4), [['1', 'a', 1]]);
+	const flash = marks(10.25, 0);
+	assert.deepEqual(flash.map(([button]) => button), ['1'], 'zero notes only flashes the latest press');
+	close(Number(flash[0][2]), 1 - .05 / .18);
+	assert.deepEqual(marks(20, 0), []);
+	assert.deepEqual(pressMarks(presses, 20, tempo, -1, 'notes'), []);
+});
+
+test('ticks fall in the scheduling window once per instant', () => {
+	const times = [0, .5, .5, .5 + 1e-9, 1, 1.5];
+	assert.deepEqual(dueTicks(times, 0, 1), [0, .5]);
+	assert.deepEqual(dueTicks(times, .5, 1.5), [.5, 1]);
+	assert.deepEqual(dueTicks(times, 1.6, 2), []);
+});
+
+test('time slices file every input instant under its beat window, SLIDE at its end button', () => {
+	const chart = parseChart('(120){4}1/5,2h[4:1],3-7[4:1],B1/C,E', 120, 0);
+	const notes = markSimultaneous(chart.notes).map(note => ({ ...note, paths: [] }));
+	const describe = (length: number) => [...sliceInstants(notes, chart.tempo, length)].map(([index, instants]) => [index, instants.map(instant => instant.items.map(item => `${item.kind}:${item.position}`).join('/'))]);
+	// The slide ends at 2s but its perfect moment falls inside the fourth beat.
+	assert.deepEqual(describe(1), [[0, ['tap:1/tap:5']], [1, ['hold:2']], [2, ['star:3']], [3, ['touch:B1/touch:C', 'slide:7']]]);
+	assert.deepEqual(describe(2), [[0, ['tap:1/tap:5', 'hold:2']], [1, ['star:3', 'touch:B1/touch:C', 'slide:7']]]);
+});
+
+test('beat positions follow BPM changes and invert', () => {
+	const tempo = [{ time: 1, bpm: 120 }, { time: 3, bpm: 60 }];
+	close(beatPosition(tempo, 1), 0);
+	close(beatPosition(tempo, 3), 4);
+	close(beatPosition(tempo, 5), 6);
+	close(beatPosition(tempo, .5), -1);
+	for (const beat of [-1, 0, 2.5, 4, 5.5]) close(beatPosition(tempo, timeAtBeat(tempo, beat)), beat);
+	assert.equal(sliceIndex(tempo, 1.5 - 1e-9, 1), 1, 'a note written on a boundary opens the next slice');
+});
+
+test('the stack holds still within a slice and steps one slot at each boundary', () => {
+	const tempo = [{ time: 0, bpm: 120 }];
+	close(sliceSlot(3, tempo, 1.2, 1), 1);
+	close(sliceSlot(3, tempo, 1.45, 1), 1);
+	close(sliceSlot(2, tempo, 1.0, 1), 1);
+	close(sliceSlot(2, tempo, 1.0 + shiftTime, 1), 0);
+	assert.ok(sliceSlot(1, tempo, 1.03, 1) > -1 && sliceSlot(1, tempo, 1.03, 1) < 0, 'the finished slice slides out');
+	for (const height of [480, 900, 1600]) {
+		for (const count of [4, 5, 6]) {
+			const bottom = slotFrame(0, height, count);
+			const top = slotFrame(count - 1, height, count);
+			assert.ok(bottom.y + bottom.ry <= height - 30 && top.y - top.ry >= 20, `${height}/${count} fits`);
+			const next = slotFrame(1, height, count);
+			assert.ok(next.y + next.ry <= bottom.y - bottom.ry + 1e-9, 'neighbouring discs do not overlap');
+		}
+	}
+});
+
+test('inside a slice notes sit from the ring inward in proportion to their time, like a still of the game screen', () => {
+	const tempo = [{ time: 0, bpm: 120 }];
+	const window = sliceWindow(tempo, 2, 1);
+	close(window.start, 1);
+	close(window.end, 1.5);
+	close(sliceDepth(1, window.start, window.end), 0);
+	close(sliceDepth(1.125, window.start, window.end), .25);
+	assert.deepEqual(radial(position('3'), 0), position('3'), 'the first sixteenth is on the ring');
+	const half = radial(position('3'), .5);
+	close(Math.hypot(half.x - 300, half.y - 300), Math.hypot(position('3').x - 300, position('3').y - 300) * (innerRadius + (1 - innerRadius) / 2));
+	assert.deepEqual(guideDepths(1), [.25, .5, .75]);
+	assert.deepEqual(guideDepths(.5), [.5]);
+	assert.deepEqual(guideDepths(4), [.25, .5, .75]);
+});
+
+test('slice labels read as measure.beat and the hand path joins nearest notes in order', () => {
+	assert.equal(sliceLabel(0, 1), '1.1');
+	assert.equal(sliceLabel(6, 1), '2.3');
+	assert.equal(sliceLabel(5, .5), '1.3½');
+	assert.equal(sliceLabel(3, 4), '4.1');
+	const item = (position: string) => ({ position }) as never;
+	const lines = handPath([{ time: 0, items: [item('1'), item('5')] }, { time: 1, items: [item('2')] }, { time: 2, items: [item('2')] }], ({ position: id }) => position(id));
+	assert.deepEqual(lines.map(line => [line.from, line.to, line.order]), [[position('1'), position('2'), 1]], 'from the nearer of the chord, and no line for a repeat');
+});
+
+test('Utage charts are filed under their own version with their difficulty 7 level', async () => {
+	const songs = await listCharts();
+	const utage = songs.filter(song => song.id.startsWith('宴会場'));
+	assert.ok(utage.length > 0);
+	assert.ok(utage.every(song => song.version === utageVersion && song.levels.length > 0));
+	assert.ok(utage.some(song => song.levels.some(([level]) => level === '7')), 'difficulty 7 levels are read');
+	assert.ok(songs.every(song => song.version !== utageVersion || song.id.startsWith('宴会場')));
 });
 
 test('TAP/HOLD are pink, input chords yellow, and BREAK takes priority', () => {

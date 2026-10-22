@@ -83,6 +83,15 @@ export function trace(points: Point[], progress: number) {
 	return { point: points.at(-1)!, rest: [points.at(-1)!] };
 }
 
+// A SLIDE's segments joined into the paths its star travels; a fan (w) splits into one path per end.
+export function notePaths(segments: Segment[]) {
+	return segments.reduce<Point[][]>((paths, segment) => {
+		const next = slidePath(segment);
+		if (paths.length === 1 && next.length === 1) return [[...paths[0], ...next[0].slice(1)]];
+		return [...paths, ...next];
+	}, []);
+}
+
 export const pathData = (points: Point[]) => points.map((point, i) => `${i ? 'L' : 'M'}${point.x},${point.y}`).join(' ');
 export const star = (point: Point, radius = 17) => Array.from({ length: 10 }, (_, i) => {
 	const angle = -Math.PI / 2 + i * Math.PI / 5;

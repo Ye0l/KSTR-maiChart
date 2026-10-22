@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { sensorCenter, sensorPoint, sensorPolygon, sensorScale } from './sensor-layout.ts';
+	import { aSensorEdge, sensorCenter, sensorPoint, sensorPolygon, sensorScale } from './sensor-layout.ts';
 
 	// Quiet mode keeps the outlines as faint context so notes stay the brightest layer.
 	let { quiet = false }: { quiet?: boolean } = $props();
@@ -15,7 +15,7 @@
 		{@const a = sensorPoint(162, -391, n)}
 		{@const d = sensorPoint(0, -440, n)}
 		<g data-sensor={`A${n}`}>
-			<path class="outer" d="M70,-477 L56,-336 L84,-308 L156,-280 L204,-280 L287,-387" transform={`translate(300,300) scale(${sensorScale}) rotate(${(n - 1) * 45})`} />
+			<path class="outer" d={aSensorEdge.map(([x, y], i) => `${i ? 'L' : 'M'}${x},${y}`).join(' ')} transform={`translate(300,300) scale(${sensorScale}) rotate(${(n - 1) * 45})`} />
 			<text x={a.x} y={a.y}>A{n}</text>
 		</g>
 		<g data-sensor={`D${n}`}><text x={d.x} y={d.y}>D{n}</text></g>

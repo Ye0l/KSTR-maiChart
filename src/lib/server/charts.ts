@@ -11,6 +11,10 @@ function coverId(dir: string) {
 	return Number.isFinite(number) ? String(number % 10000).padStart(6, '0') : undefined;
 }
 
+// Utage charts are novelty remixes, so they get a version of their own instead of their release version.
+export const utageVersion = '宴会場';
+const utage = (id: string) => id.split(/[\\/]/)[0] === utageVersion;
+
 async function scan() {
 	const covers = new Set(await readdir(coverRoot).catch(() => []));
 	const entries = await readdir(root, { recursive: true, withFileTypes: true });
@@ -20,13 +24,21 @@ async function scan() {
 		// Only the header matters here; chart bodies follow the first &inote_ field.
 		const body = text.search(/^&inote_/m);
 		const fields = readMaidata(body < 0 ? text : text.slice(0, body));
-		const levels = ['1', '2', '3', '4', '5', '6'].flatMap((level) => fields[`lv_${level}`] ? [[level, fields[`lv_${level}`]] as [string, string]] : []);
+		// Difficulty 7 is the Utage (宴) chart.
+		const levels = ['1', '2', '3', '4', '5', '6', '7'].flatMap((level) => fields[`lv_${level}`] ? [[level, fields[`lv_${level}`]] as [string, string]] : []);
+		const designers = [...new Set(levels.map(([level]) => fields[`des_${level}`]?.trim()).concat(fields.des?.trim()).filter((name): name is string => !!name))];
+		const bpm = Number(fields.wholebpm);
 		const dir = basename(dirname(id));
 		const cover = coverId(dir);
-		return { id, title: dir.replace(/^(\d+)_/, '$1 · ').replace(/_DX$/, ' [DX]'), version: fields.version ?? '', levels, cover: cover && covers.has(`${cover}.png`) ? cover : null };
+		return {
+			id, title: dir.replace(/^(\d+)_/, '$1 · ').replace(/_DX$/, ' [DX]'), version: utage(id) ? utageVersion : fields.version ?? '', levels,
+			// The folder name is a romanised key; &title holds the real title, minus the [DX] / [SD] / [宴] suffix the catalog shows separately.
+			name: fields.title?.replace(/\[(DX|SD|宴)\]$/, '').trim() || undefined,
+			artist: fields.artist ?? '', bpm: Number.isFinite(bpm) && bpm > 0 ? bpm : undefined, designers,
+			cover: cover && covers.has(`${cover}.png`) ? cover : null
+		};
 	}));
-
-	return songs.sort((a, b) => a.title.localeCompare(b.title, 'ja', { numeric: true }));
+	return songs.sort((a, b) => (a.name ?? a.title).localeCompare(b.name ?? b.title, 'ja', { numeric: true }));
 }
 
 // The chart repository is a read-only submodule, so one scan serves the whole process.

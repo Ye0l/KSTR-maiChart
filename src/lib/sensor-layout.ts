@@ -6,6 +6,9 @@ export const sensorOutlines = {
 	E: [[0, -380], [72, -308], [0, -236], [-72, -308]]
 } satisfies Record<string, number[][]>;
 
+// The inner edge of an A sensor, from its border with D(n) round to D(n+1); both ends sit on the skin's rim (r 482).
+export const aSensorEdge = [[70, -477], [56, -336], [84, -308], [156, -280], [204, -280], [287, -387]];
+
 export function sensorPoint(x: number, y: number, index: number) {
 	const angle = (index - 1) * Math.PI / 4;
 	return {

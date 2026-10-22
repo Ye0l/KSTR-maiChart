@@ -1,6 +1,7 @@
 {
 	"name": "kstr-maichart",
 	"private": true,
+	"license": "GPL-3.0-or-later",
 	"version": "0.0.1",
 	"type": "module",
 	"packageManager": "pnpm@11.26.0",

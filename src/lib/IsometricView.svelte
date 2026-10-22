@@ -3,11 +3,12 @@
 	import SensorLayout from './SensorLayout.svelte';
 	import { chevrons, clamp, distance, pathData, position, star, trace, type Point } from './geometry.ts';
 	import { noteColor, type DisplayNote } from './presentation.ts';
-	import { beatsBetween, depthOpacity, dropDistance, fallHeight, planeTransform, project, projectSlide, sectorArc } from './isometric.ts';
+	import { beatsBetween, dropDistance, fallHeight, planeTransform, project, projectSlide, sectorArc, timeOpacity } from './isometric.ts';
+	import type { PressMark } from './press.ts';
 
-	let { notes, time, noteSpeed, touchSpeed, tempo }: {
+	let { notes, time, noteSpeed, touchSpeed, tempo, marks }: {
 		notes: (DisplayNote & { paths: Point[][] })[]; time: number; noteSpeed: number; touchSpeed: number;
-		tempo: { time: number; bpm: number }[];
+		tempo: { time: number; bpm: number }[]; marks: PressMark[];
 	} = $props();
 	const buttons = Array.from({ length: 8 }, (_, i) => String(i + 1));
 	let canvas: SVGSVGElement | undefined;
@@ -71,6 +72,10 @@
 				<circle cx={target.x} cy={target.y} r="15" fill="#3a4560" stroke="#8790a7" stroke-width="1.5" />
 				<text x={target.x} y={target.y + 5} text-anchor="middle" fill="#e1e6f0" font-size="15" font-weight="700">{button}</text>
 			{/each}
+			{#each marks as mark}
+				{@const target = position(mark.button)}
+				<circle class="press-mark" data-button={mark.button} cx={target.x} cy={target.y} r="30" fill={mark.color} fill-opacity=".3" stroke={mark.color} stroke-width="4" opacity={mark.strength} pointer-events="none" />
+			{/each}
 		</g>
 		<!-- Landing marks converge on the spot a note will hit. -->
 		<g class="landing" transform={plane()}>
@@ -89,19 +94,20 @@
 		{#each leads as note}
 			{@const target = position(note.position)}
 			{@const base = projectPoint(target)}
-			{@const head = projectPoint(target, height(note.time, note))}
-			<line class="lead" x1={base.x} y1={base.y} x2={head.x} y2={head.y} stroke={noteColor(note)} stroke-width="2" opacity=".5" />
+			{@const lift = height(note.time, note)}
+			{@const head = projectPoint(target, lift)}
+			<line class="lead" x1={base.x} y1={base.y} x2={head.x} y2={head.y} stroke={noteColor(note)} stroke-width="2" opacity={.5 * timeOpacity(lift, viewHeight)} />
 		{/each}
 		{#each rungs as rung}
 			<circle class="beat-rung" cx="300" cy="300" r="254" transform={plane(rung.lift)} fill="none" stroke="#9fb0d0" stroke-width="1" vector-effect="non-scaling-stroke" opacity={rung.downbeat ? .24 : .1} pointer-events="none" />
 		{/each}
 		{#each guides as guide}
-			<circle class="timing-ring" data-height={guide.lift} cx="300" cy="300" r="254" transform={plane(guide.lift)} fill="none" stroke={guide.color} stroke-width="1" vector-effect="non-scaling-stroke" opacity=".3" pointer-events="none" />
-			<g class="timing-sectors" transform={plane(guide.lift)} pointer-events="none">
+			<circle class="timing-ring" data-height={guide.lift} cx="300" cy="300" r="254" transform={plane(guide.lift)} fill="none" stroke={guide.color} stroke-width="1" vector-effect="non-scaling-stroke" opacity={.3 * timeOpacity(guide.lift, viewHeight)} pointer-events="none" />
+			<g class="timing-sectors" transform={plane(guide.lift)} opacity={timeOpacity(guide.lift, viewHeight)} pointer-events="none">
 				{#each guide.notes as note}
 					{@const fade = time > note.time && !(note.duration > 0 && time < note.time + note.duration) ? clamp(1 - (time - note.time) / .18) : 1}
 					{#each sectorArc(position(note.position)) as piece}
-						<path d={piece.d} fill="none" stroke={noteColor(note)} stroke-width={1 + 4 * piece.weight} opacity={(.3 + .7 * piece.weight) * fade} vector-effect="non-scaling-stroke" />
+						<path d={piece.d} fill="none" stroke={noteColor(note)} stroke-width={1 + 6 * piece.weight} opacity={(.3 + .7 * piece.weight) * fade} vector-effect="non-scaling-stroke" />
 					{/each}
 				{/each}
 			</g>
@@ -127,7 +133,7 @@
 					{/if}
 					<path class="slide-time" d={pathData(projectSlide(points, start, note.duration, time, approach(note), viewHeight))} fill="none" stroke={noteColor(note)} stroke-width="1.5" opacity=".35" />
 					{#if time >= note.time && time <= finish}
-						<polygon opacity={depthOpacity(marker)} points={star(marker, 20)} transform={plane()} fill={noteColor(note)} stroke="white" stroke-width="2" />
+						<polygon points={star(marker, 20)} transform={plane()} fill={noteColor(note)} stroke="white" stroke-width="2" />
 					{/if}
 				{/each}
 			</g>
@@ -140,7 +146,7 @@
 			{@const touch = note.kind.startsWith('touch')}
 			{@const hit = time >= note.time}
 			{@const holding = note.duration > 0 && hit && time < note.time + note.duration}
-			<g data-kind={note.kind} data-time={note.time} data-position={note.position} data-height={lift} opacity={depthOpacity(target) * (hit && !holding ? clamp(1 - (time - note.time) / .18) : 1)}>
+			<g data-kind={note.kind} data-time={note.time} data-position={note.position} data-height={lift} opacity={hit && !holding ? clamp(1 - (time - note.time) / .18) : timeOpacity(lift, viewHeight)}>
 				{#if note.duration > 0}
 					<line class="hold-body" x1={head.x} y1={head.y} x2={tail.x} y2={tail.y} stroke={noteColor(note)} stroke-width="14" opacity=".45" />
 					<g transform={plane(height(note.time + note.duration, note))}>

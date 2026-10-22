@@ -11,9 +11,10 @@ import { markSimultaneous } from '../src/lib/presentation.ts';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-test('collapsible layout, mobile overlay, tabs and playback', { timeout: 30000 }, async () => {
+test('collapsible layout, mobile overlay, tabs and playback', { timeout: 45000 }, async () => {
 	const profile = await mkdtemp(join(tmpdir(), 'maichart-layout-'));
-	const browser = spawn(process.env.CHROMIUM ?? 'chromium', ['--headless', '--no-sandbox', '--disable-dev-shm-usage', '--remote-debugging-port=0', `--user-data-dir=${profile}`, process.env.VIEWER_URL ?? 'http://localhost:5173/']);
+	// The window must cover the emulated 1280x800 viewport: Chrome drops synthetic input outside the real window.
+	const browser = spawn(process.env.CHROMIUM ?? 'chromium', ['--headless', '--no-sandbox', '--disable-dev-shm-usage', '--remote-debugging-port=0', '--window-size=1280,800', '--autoplay-policy=no-user-gesture-required', `--user-data-dir=${profile}`, process.env.VIEWER_URL ?? 'http://localhost:5173/']);
 	let socket;
 	try {
 		const endpoint = await new Promise((resolve, reject) => {
@@ -89,10 +90,39 @@ test('collapsible layout, mobile overlay, tabs and playback', { timeout: 30000 }
 		};
 		const selectedSpeeds = (id = 'game') => evaluate(`[Number(document.getElementById('${id}-note-speed').value), Number(document.getElementById('${id}-touch-speed').value)]`);
 		const reload = async () => { await cdp('Page.reload'); await sleep(1000); };
-		assert.deepEqual(await selectedSpeeds(), [6, 6], 'both speeds default to 6');
+		const songNames = () => evaluate('Array.from(document.querySelectorAll("#song-picker .song-name"), el => el.textContent)');
+		await click('#open-picker');
+		assert.equal(await evaluate('document.querySelector("#song-picker").open'), true, 'the song picker opens as a modal');
+		const picker = await bounds('#song-picker');
+		assert.ok(picker.width >= 1270 && picker.height >= 790, 'the picker covers the screen');
+		assert.ok(await evaluate('!!document.querySelector("#song-picker [aria-current=page]")'), 'the open song is in view');
+		await setValue('#search', 'ClariS');
+		assert.ok((await songNames()).includes('コネクト'), 'search matches artists');
+		await setValue('#search', '');
+		await click('#more-filters');
+		await setValue('select[aria-label="난이도 필터"]', '5');
+		await setValue('#sort-key', 'level');
+		await click('#sort-direction');
+		const masters = await evaluate('Array.from(document.querySelectorAll("#song-picker .song-levels b:not(.dim)"), el => parseFloat(el.textContent))');
+		assert.ok(masters.length > 10 && masters.every((value, i) => i === 0 || masters[i - 1] >= value), 'MASTER levels sort high to low');
+		const shown = () => evaluate('parseInt(document.querySelector("#song-picker .count span").textContent)');
+		const allMasters = await shown();
+		await setValue('input[aria-label="최소 BPM"]', 200);
+		assert.ok(await shown() < allMasters, 'BPM narrows the list');
+		await click('#song-picker .clear');
+		await click('#sort-direction');
+		await setValue('#sort-key', 'title');
+		await click('#more-filters');
+		assert.ok(await evaluate('document.querySelectorAll("#song-picker .songs a").length') < 200, 'cards render in pages');
+		await click('#picker-close');
+		assert.equal(await evaluate('document.querySelector("#song-picker").open'), false);
+		assert.deepEqual(await selectedSpeeds(), [6, 6], 'game speeds default to 6');
+		await showViews('game', 'flat', 'isometric');
+		for (const id of ['flat', 'isometric']) assert.deepEqual(await selectedSpeeds(id), [2, 2], 'flat and isometric speeds default to 2');
+		await showViews('game');
 		await setValue('#game-note-speed', 6.25);
 		await setValue('#game-touch-speed', 7.5);
-		assert.deepEqual(await evaluate('JSON.parse(localStorage.getItem("maichart.speeds"))'), { game: { note: 6.25, touch: 7.5 }, flat: { note: 6, touch: 6 }, isometric: { note: 6, touch: 6 } });
+		assert.deepEqual(await evaluate('JSON.parse(localStorage.getItem("maichart.speeds"))'), { game: { note: 6.25, touch: 7.5 }, flat: { note: 2, touch: 2 }, isometric: { note: 2, touch: 2 } });
 		await reload();
 		assert.deepEqual(await selectedSpeeds(), [6.25, 7.5], 'saved speeds survive a reload');
 		await showViews('game', 'flat', 'isometric');
@@ -150,6 +180,7 @@ test('collapsible layout, mobile overlay, tabs and playback', { timeout: 30000 }
 		await setValue('#flat-note-speed', 1);
 		await setValue('#flat-touch-speed', 1);
 		assert.deepEqual(await evaluate('Array.from(document.querySelectorAll("[data-lane]"), el => Number(el.textContent))'), [1, 2, 3, 4, 5, 6, 7, 8]);
+		assert.deepEqual(await evaluate('Array.from(document.querySelectorAll("[data-lane]")).sort((a, b) => a.getAttribute("x") - b.getAttribute("x")).map(el => Number(el.textContent))'), [8, 7, 6, 5, 4, 3, 2, 1], 'flat lanes run 8 to 1 from the left');
 		await checkFlatText();
 		const noteSelector = (note) => `svg [data-kind="${note.kind}"][data-time="${note.time}"][data-position="${note.position}"]`;
 		const attr = (selector, name) => evaluate(`document.querySelector(${JSON.stringify(selector)}).getAttribute(${JSON.stringify(name)})`);
@@ -167,7 +198,7 @@ test('collapsible layout, mobile overlay, tabs and playback', { timeout: 30000 }
 		const beforeY = Number(await attr(`${noteSelector(firstTap)} .note-head`, 'y'));
 		await setValue('.seek', firstTap.time - .2);
 		assert.ok(Number(await attr(`${noteSelector(firstTap)} .note-head`, 'y')) > beforeY, 'flat notes fall downward');
-		assert.equal(Number(await attr(`${noteSelector(firstTap)} .note-head`, 'x')), 40 + (Number(firstTap.position) - .5) * 65 - 25);
+		assert.equal(Number(await attr(`${noteSelector(firstTap)} .note-head`, 'x')), 40 + (8.5 - Number(firstTap.position)) * 65 - 25);
 		const displayNotes = markSimultaneous(notes);
 		const examples = [
 			[displayNotes.find(note => note.kind === 'hold' && !note.simultaneous && !note.break), '#ff68b7'],
@@ -188,8 +219,8 @@ test('collapsible layout, mobile overlay, tabs and playback', { timeout: 30000 }
 		await setValue('.seek', slide.time + slide.wait + slide.duration / 2);
 		const connection = (await attr(`${noteSelector(slide)} polyline`, 'points')).split(' ').map(point => point.split(',').map(Number));
 		assert.equal(connection.length, 3);
-		assert.equal(connection[0][0], 40 + (slide.segments[0].start - .5) * 65);
-		assert.equal(connection[2][0], 40 + (slide.segments.at(-1).end - .5) * 65);
+		assert.equal(connection[0][0], 40 + (8.5 - slide.segments[0].start) * 65);
+		assert.equal(connection[2][0], 40 + (8.5 - slide.segments.at(-1).end) * 65);
 		assert.equal(await evaluate('document.querySelector("svg").outerHTML.includes("NaN")'), false);
 		const isoTime = await evaluate('document.querySelector(".seek").value');
 		await showViews('isometric');
@@ -200,9 +231,11 @@ test('collapsible layout, mobile overlay, tabs and playback', { timeout: 30000 }
 		const singleIsoHeight = await checkIsoSpawn();
 		await setValue('.seek', firstTap.time - .4);
 		const high = Number(await attr(noteSelector(firstTap), 'data-height'));
+		const farOpacity = Number(await attr(noteSelector(firstTap), 'opacity'));
 		await setValue('.seek', firstTap.time - .2);
 		assert.ok(Number(await attr(noteSelector(firstTap), 'data-height')) < high, 'isometric notes descend vertically');
-		assert.equal(Number(await attr(noteSelector(firstTap), 'opacity')), [1, 6, 7, 8].includes(Number(firstTap.position)) ? .45 : 1, 'rear notes are dimmed in the rendered scene');
+		const nearOpacity = Number(await attr(noteSelector(firstTap), 'opacity'));
+		assert.ok(farOpacity < nearOpacity && nearOpacity < 1, 'notes brighten as their hit nears in the rendered scene');
 		const lift = await attr(noteSelector(firstTap), 'data-height');
 		const ring = `svg .timing-ring[data-height="${lift}"]`;
 		assert.equal(await attr(ring, 'transform'), await attr(`${noteSelector(firstTap)} .note-plane`, 'transform'), 'full-circle guide follows the note plane');
@@ -255,6 +288,23 @@ test('collapsible layout, mobile overlay, tabs and playback', { timeout: 30000 }
 		await setValue('#flat-note-speed', 2);
 		assert.equal(await evaluate(`!!document.querySelector(${JSON.stringify(flatTap)})`), true);
 		assert.equal(await attr(isoTap, 'data-height'), isoLift, 'flat speed does not affect isometric height');
+		const pressMarks = () => evaluate(`Array.from(document.querySelectorAll('svg[data-view] .press-mark'), el => el.closest('svg').dataset.view + ':' + el.dataset.button)`);
+		await setValue('.seek', firstTap.time - .01);
+		assert.ok(!(await pressMarks()).includes(`game:${firstTap.position}`), 'no press highlight before the hit');
+		await setValue('.seek', firstTap.time);
+		for (const id of ['game', 'flat', 'isometric']) assert.ok((await pressMarks()).includes(`${id}:${firstTap.position}`), `${id} highlights the button to press`);
+		assert.equal(await evaluate('document.querySelector("#press-trail").value'), '4', 'press afterimage defaults to 4');
+		assert.equal(await attr('#press-trail-notes', 'aria-checked'), 'true', 'press afterimage counts notes by default');
+		await click('#press-trail-beats');
+		for (const id of ['game', 'flat', 'isometric']) assert.ok((await pressMarks()).includes(`${id}:${firstTap.position}`), `${id} highlights in beat mode too`);
+		await setValue('#press-trail', -1);
+		assert.deepEqual(await pressMarks(), [], '-1 turns press highlights off');
+		await reload();
+		await showViews('game', 'flat', 'isometric');
+		assert.equal(await evaluate('document.querySelector("#press-trail").value'), '-1', 'press afterimage setting survives a reload');
+		assert.equal(await attr('#press-trail-beats', 'aria-checked'), 'true', 'press afterimage unit survives a reload');
+		await setValue('#press-trail', 4);
+		await click('#press-trail-notes');
 		await showViews('flat');
 		await click('#view-game');
 		assert.deepEqual(await evaluate('Array.from(document.querySelectorAll("[data-panel]"), el => el.dataset.panel)'), ['flat', 'game'], 'views appear in activation order');
@@ -263,11 +313,42 @@ test('collapsible layout, mobile overlay, tabs and playback', { timeout: 30000 }
 		await click('#view-isometric');
 		await click('#view-flat');
 		assert.deepEqual(await evaluate('Array.from(document.querySelectorAll("[data-panel]"), el => el.dataset.panel)'), ['game', 'isometric', 'flat'], 'reenabled views append to the end');
-		assert.deepEqual(await evaluate('Array.from(document.querySelectorAll(".view-speeds legend"), el => el.textContent)'), ['게임', 'Isometric', '평면'], 'speed controls follow viewer order');
+		assert.deepEqual(await evaluate('Array.from(document.querySelectorAll(".view-speeds legend"), el => el.textContent)'), ['게임', 'Isometric', '평면', '누를 위치 강조'], 'speed controls follow viewer order');
 		for (const id of ['game', 'isometric', 'flat']) await click('#view-' + id);
 		assert.equal(await evaluate('document.querySelectorAll("[data-panel]").length'), 0);
 		assert.match(await evaluate('document.querySelector("#chart-stage").textContent'), /표시할 뷰/);
+		await showViews('slice');
+		await setValue('.seek', firstTap.time + .2);
+		const slices = () => evaluate('Array.from(document.querySelectorAll("svg[data-view=slice] .slice"), el => ({ index: Number(el.dataset.index), slot: Number(el.dataset.slot) }))');
+		assert.equal(await evaluate('document.querySelector("svg[data-view=slice]").outerHTML.includes("NaN")'), false);
+		assert.ok(await evaluate(`!!document.querySelector('svg[data-view=slice] .slice[data-slot="0"] .instant[data-time="${firstTap.time}"] .slice-note[data-position="${firstTap.position}"]')`), 'the bottom slice holds the window being played');
+		assert.equal(await evaluate('document.querySelector("#slice-count").value'), '5', 'five slices by default');
+		assert.deepEqual((await slices()).filter(slice => slice.slot >= 0).map(slice => slice.slot).sort(), [0, 1, 2, 3, 4], 'slices sit on whole slots between boundaries');
+		assert.equal(await attr('#slice-length-1', 'aria-checked'), 'true', 'one beat per slice by default');
+		await setValue('#slice-count', 4);
+		assert.equal((await slices()).filter(slice => slice.slot >= 0).length, 4);
+		assert.equal(await evaluate('localStorage.getItem("maichart.sliceCount")'), '4', 'slice count is saved');
+		await setValue('#slice-count', 5);
+		await click('#slice-length-4');
+		assert.equal(await evaluate('localStorage.getItem("maichart.sliceLength")'), '4', 'slice length is saved');
+		assert.ok(await evaluate(`!!document.querySelector('svg[data-view=slice] .slice[data-slot="0"] .instant[data-time="${firstTap.time}"]')`), 'a measure slice still holds the note being played');
+		await click('#slice-length-1');
 		await showViews('game');
+		await evaluate('window.__ticks = 0; const create = AudioContext.prototype.createOscillator; AudioContext.prototype.createOscillator = function () { window.__ticks++; return create.call(this); }; 1');
+		const playTicks = async () => {
+			await evaluate('window.__ticks = 0');
+			await setValue('.seek', firstTap.time - .3);
+			await click('.controls button');
+			await sleep(600);
+			await click('.controls button');
+			return evaluate('window.__ticks');
+		};
+		assert.equal(await attr('#tick-toggle', 'aria-pressed'), 'true', 'tick sound is on by default');
+		assert.ok(await playTicks() >= 1, 'a tick is scheduled for the press moment');
+		await click('#tick-toggle');
+		assert.equal(await evaluate('localStorage.getItem("maichart.ticks")'), 'false', 'tick toggle is saved');
+		assert.equal(await playTicks(), 0, 'muted playback schedules no ticks');
+		await click('#tick-toggle');
 		await setValue('.seek', 0);
 		await click('.controls button');
 		await sleep(1100);
@@ -355,9 +436,13 @@ test('collapsible layout, mobile overlay, tabs and playback', { timeout: 30000 }
 			const mobileGame = await bounds('svg[data-view="game"]');
 			const mobileFlat = await bounds('svg[data-view="flat"]');
 			assert.ok(mobileGame.height > 0 && mobileFlat.height > 0);
-			assert.ok(mobileGame.y + mobileGame.height <= mobileFlat.y, 'mobile views stack vertically');
 			const mobileIso = await bounds('svg[data-view="isometric"]');
-			assert.ok(mobileFlat.y + mobileFlat.height <= mobileIso.y && mobileIso.height > 0, 'isometric stacks below the other mobile views');
+			assert.ok(mobileGame.y + mobileGame.height <= mobileIso.y && mobileIso.height > 0, 'other mobile views stack vertically');
+			assert.ok(mobileGame.x + mobileGame.width <= mobileFlat.x && mobileIso.x + mobileIso.width <= mobileFlat.x, 'flat takes a column on the right');
+			assert.ok(mobileFlat.height > mobileGame.height + mobileIso.height, 'the flat column spans the full stage height');
+			await showViews('game', 'isometric');
+			assert.ok((await bounds('svg[data-view="game"]')).y + (await bounds('svg[data-view="game"]')).height <= (await bounds('svg[data-view="isometric"]')).y, 'without flat, mobile views still stack');
+			await showViews('game', 'flat', 'isometric');
 			assert.equal(await evaluate('document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight'), false, 'both views fit on mobile');
 			await checkFlatText();
 			await showViews('game');
