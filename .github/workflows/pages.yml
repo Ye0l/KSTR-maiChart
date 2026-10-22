@@ -27,6 +27,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
+      - name: Install ImageMagick for cover conversion
+        run: sudo apt-get update && sudo apt-get install -y imagemagick
       - run: pnpm build
         env:
           BASE_PATH: /${{ github.event.repository.name }}
