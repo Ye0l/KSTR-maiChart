@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { asset } from '$app/paths';
 	import type { PageData } from './$types';
 	import { parseChart, readMaidata, type Note } from '#lib/simai.ts';
 	import { chevrons, clamp, mix, position, slidePath, star, trace } from '#lib/geometry.ts';
@@ -7,6 +8,9 @@
 	import FlatView from '#lib/FlatView.svelte';
 	import IsometricView from '#lib/IsometricView.svelte';
 	import { markSimultaneous, noteColor as color } from '#lib/presentation.ts';
+
+// Covers are generated before dev/build, so their names are outside SvelteKit's static-asset type union.
+const coverUrl = (cover: string, ext: 'webp' | 'jpg') => asset(`covers/${cover}.${ext}` as Parameters<typeof asset>[0]);
 
 	let { data }: { data: PageData } = $props();
 	const names = ['EASY', 'BASIC', 'ADVANCED', 'EXPERT', 'MASTER', 'Re:MASTER'];
@@ -328,11 +332,23 @@
 					{#each filteredSongs as song (song.id)}
 						<li>
 							<a href={`?chart=${encodeURIComponent(song.id)}`} aria-current={song.id === data.selected ? 'page' : undefined} onclick={() => { if (song.matches.length) difficulty = song.matches.at(-1)![0]; }}>
-								<span class="song-name">{song.name}</span>
-								<span class="song-meta">{#if song.dx}<b class="dx">DX</b>{/if}{song.number ? `${song.number} · ` : ''}{song.genre}</span>
-								{#if song.matches.length}
-									<span class="song-levels">{#each song.matches as [level, value]}<b style:--difficulty={difficultyColors[Number(level) - 1]}>{names[Number(level) - 1] ?? level} {value}</b>{/each}</span>
-								{/if}
+								<span class="song-cover">
+									{#if song.cover}
+										<picture>
+											<source srcset={coverUrl(song.cover, 'webp')} type="image/webp" />
+											<img src={coverUrl(song.cover, 'jpg')} alt="" width="40" height="40" loading="lazy" decoding="async" />
+										</picture>
+									{:else}
+										<span aria-hidden="true">♪</span>
+									{/if}
+								</span>
+								<span class="song-info">
+									<span class="song-name">{song.name}</span>
+									<span class="song-meta">{#if song.dx}<b class="dx">DX</b>{/if}{song.number ? `${song.number} · ` : ''}{song.genre}</span>
+									{#if song.matches.length}
+										<span class="song-levels">{#each song.matches as [level, value]}<b style:--difficulty={difficultyColors[Number(level) - 1]}>{names[Number(level) - 1] ?? level} {value}</b>{/each}</span>
+									{/if}
+								</span>
 							</a>
 						</li>
 					{:else}
@@ -614,12 +630,15 @@
 	.song-levels { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
 	.song-levels b { padding: 0 6px; border-radius: 4px; background: color-mix(in srgb, var(--difficulty) 18%, transparent); color: var(--difficulty); font-size: 10.5px; line-height: 18px; }
 	.songs { position: relative; flex: 1; min-height: 0; margin: 0 -12px; padding: 0 6px 12px; overflow-y: auto; overscroll-behavior: contain; list-style: none; }
-	.songs li { content-visibility: auto; contain-intrinsic-size: auto 50px; }
-	.songs a { display: grid; gap: 1px; padding: 8px 10px; border-radius: 8px; color: var(--text); text-decoration: none; }
+	.songs li { content-visibility: auto; contain-intrinsic-size: auto 58px; }
+	.songs a { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; align-items: center; padding: 8px 10px; border-radius: 8px; color: var(--text); text-decoration: none; }
 	.songs a[aria-current='page'] { background: color-mix(in srgb, var(--accent) 14%, transparent); box-shadow: inset 3px 0 var(--accent); }
 	@media (hover: hover) { .songs a:hover { background: var(--surface-3); } }
 	.song-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
 	.song-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-size: 11.5px; }
+	.song-info { display: grid; gap: 1px; min-width: 0; }
+	.song-cover { display: grid; place-items: center; width: 40px; height: 40px; overflow: hidden; border-radius: 6px; background: var(--surface-3); color: var(--text-3); font-size: 18px; }
+	.song-cover img { width: 100%; height: 100%; object-fit: cover; }
 	.dx { margin-right: 6px; padding: 0 4px; border-radius: 3px; background: #2a3a55; color: #ffd36b; font-size: 10px; }
 	.empty-search { padding: 20px 10px; color: var(--text-3); font-size: 13px; text-align: center; }
 	h2 { margin: 2px 0 2px; font-size: 19px; line-height: 1.35; overflow-wrap: anywhere; }

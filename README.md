@@ -4,7 +4,7 @@ SvelteKit + SVG로 만든 가벼운 Simai(maimai) 차트 뷰어. 차트를 무�
 
 ## 주요 기능
 
-- **곡 찾기**: 좌측 패널에서 곡명·ID 검색, **레벨**(maimai 표기 `13` / `13+`)과 **버전** 필터. 목록을 누르면 바로 열리고, 레벨 필터 중에는 해당 난이도로 엽니다.
+- **곡 찾기**: 좌측 패널에서 곡명·ID 검색, 자켓 썸네일, **레벨**(maimai 표기 `13` / `13+`)과 **버전** 필터. 목록을 누르면 바로 열리고, 레벨 필터 중에는 해당 난이도로 엽니다.
 - **난이도 칩**: BASIC~Re:MASTER를 게임 색으로 표시하며 상단바에 현재 난이도 배지가 붙습니다.
 - **세 가지 뷰** (상단 토글, 동시에 여러 개 가능)
   - **게임 뷰**: 실제 화면과 같은 원형 판. SLIDE는 maimai식 화살표 트랙으로 그리고 별이 지나간 화살표는 사라집니다.
@@ -39,7 +39,7 @@ SvelteKit + SVG로 만든 가벼운 Simai(maimai) 차트 뷰어. 차트를 무�
 
 ## 실행
 
-Node.js 22.18 이상과 pnpm이 필요합니다. 차트 데이터는 [`Maichart-Converts`](https://github.com/Neskol/Maichart-Converts) 서브모듈입니다.
+Node.js 22.18 이상과 pnpm, ImageMagick(`convert`)이 필요합니다. 차트 데이터는 [`Maichart-Converts`](https://github.com/Neskol/Maichart-Converts) 서브모듈이고, 자켓 이미지는 [`SaltMeta`](https://github.com/realtvop/SaltMeta) 서브모듈의 `covers/`를 씁니다. `pnpm dev`와 `pnpm build`가 SaltMeta의 PNG를 WebP와 JPEG로 미리 변환해 `static/covers/`에 둡니다.
 
 ```sh
 git clone --recurse-submodules <this-repo>
@@ -70,7 +70,7 @@ BASE_PATH=/KSTR-maiChart pnpm build       # Pages처럼 하위 경로에 올릴 
 - SLIDE 경로와 구간별 이동은 시각화용 근사치이며 원본 게임과의 정밀 일치를 보장하지 않습니다.
 - 박자 링은 4/4박을 가정하고 BPM이 바뀌는 지점부터 박을 다시 셉니다.
 - 음원·판정·점수·입력 플레이는 없습니다. 미지원 표기는 정보 탭에 경고하고 건너뜁니다.
-- 자켓 이미지는 아직 없습니다(차트 저장소에 포함되어 있지 않음).
+- 자켓 이미지는 SaltMeta `covers/<번호>.png`를 곡 번호로 연결합니다(같은 곡의 SD/DX/宴 변형은 같은 자켓). SaltMeta에 없는 171곡은 빈 자리로 표시합니다. PNG는 빌드 전에 WebP와 JPEG로 변환합니다.
 
 ## 검증
 

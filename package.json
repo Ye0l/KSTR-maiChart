@@ -5,8 +5,8 @@
 	"type": "module",
 	"packageManager": "pnpm@11.26.0",
 	"scripts": {
-		"dev": "vite dev",
-		"build": "vite build",
+		"dev": "node scripts/covers.mjs && vite dev",
+		"build": "node scripts/covers.mjs && vite build",
 		"test": "node --test src/lib/simai.test.ts",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
