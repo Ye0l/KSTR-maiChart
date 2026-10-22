@@ -11,7 +11,7 @@ import { markSimultaneous } from '../src/lib/presentation.ts';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-test('collapsible layout, mobile overlay, tabs and playback', { timeout: 30000 }, async () => {
+test('collapsible layout, mobile overlay, tabs and playback', { timeout: 45000 }, async () => {
 	const profile = await mkdtemp(join(tmpdir(), 'maichart-layout-'));
 	// The window must cover the emulated 1280x800 viewport: Chrome drops synthetic input outside the real window.
 	const browser = spawn(process.env.CHROMIUM ?? 'chromium', ['--headless', '--no-sandbox', '--disable-dev-shm-usage', '--remote-debugging-port=0', '--window-size=1280,800', '--autoplay-policy=no-user-gesture-required', `--user-data-dir=${profile}`, process.env.VIEWER_URL ?? 'http://localhost:5173/']);
@@ -426,9 +426,13 @@ test('collapsible layout, mobile overlay, tabs and playback', { timeout: 30000 }
 			const mobileGame = await bounds('svg[data-view="game"]');
 			const mobileFlat = await bounds('svg[data-view="flat"]');
 			assert.ok(mobileGame.height > 0 && mobileFlat.height > 0);
-			assert.ok(mobileGame.y + mobileGame.height <= mobileFlat.y, 'mobile views stack vertically');
 			const mobileIso = await bounds('svg[data-view="isometric"]');
-			assert.ok(mobileFlat.y + mobileFlat.height <= mobileIso.y && mobileIso.height > 0, 'isometric stacks below the other mobile views');
+			assert.ok(mobileGame.y + mobileGame.height <= mobileIso.y && mobileIso.height > 0, 'other mobile views stack vertically');
+			assert.ok(mobileGame.x + mobileGame.width <= mobileFlat.x && mobileIso.x + mobileIso.width <= mobileFlat.x, 'flat takes a column on the right');
+			assert.ok(mobileFlat.height > mobileGame.height + mobileIso.height, 'the flat column spans the full stage height');
+			await showViews('game', 'isometric');
+			assert.ok((await bounds('svg[data-view="game"]')).y + (await bounds('svg[data-view="game"]')).height <= (await bounds('svg[data-view="isometric"]')).y, 'without flat, mobile views still stack');
+			await showViews('game', 'flat', 'isometric');
 			assert.equal(await evaluate('document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight'), false, 'both views fit on mobile');
 			await checkFlatText();
 			await showViews('game');

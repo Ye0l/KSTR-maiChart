@@ -477,7 +477,7 @@
 				<p class="hint">음악 없이 틱 사운드로 자동 재생 · 슬라이드 경로는 근사 표시<br />플레이 화면에서 휠 또는 상하 스와이프로 탐색</p>
 			</div>
 		</aside>
-		<section id="chart-stage" class:split={activeViews.length > 1} style:--view-count={Math.max(1, activeViews.length)} aria-label="플레이 화면">
+		<section id="chart-stage" class:split={activeViews.length > 1} class:flat-column={activeViews.length > 1 && activeViews.includes('flat')} style:--view-count={Math.max(1, activeViews.length)} style:--other-count={Math.max(1, activeViews.length - 1)} aria-label="플레이 화면">
 			{#each activeViews as id (id)}
 			<div class="viewer" data-panel={id}>
 			{#if activeViews.length > 1}<span class="view-tag" aria-hidden="true">{viewLabels[id]}</span>{/if}
@@ -861,6 +861,10 @@
 		.view-switch button { flex: 1; min-height: 34px; padding-inline: 4px; }
 		section { padding: 8px; }
 		section.split { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(var(--view-count), minmax(0, 1fr)); gap: 8px; }
+		/* The flat view reads best tall, so beside other views it takes a full-height column on the right. */
+		section.split.flat-column { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); grid-template-rows: repeat(var(--other-count), minmax(0, 1fr)); }
+		.flat-column .viewer { grid-column: 1; }
+		.flat-column .viewer[data-panel='flat'] { grid-column: 2; grid-row: 1 / -1; }
 		aside { position: absolute; bottom: 0; left: 0; z-index: 3; width: 100%; height: min(85%, 640px); padding-top: 14px; border: 1px solid var(--border-strong); border-bottom: 0; border-radius: 18px 18px 0 0; box-shadow: 0 -16px 48px #000b; animation: sheet-in .22s cubic-bezier(.2, .8, .2, 1); }
 		aside::before { content: ''; position: absolute; top: 6px; left: 50%; width: 36px; height: 4px; translate: -50% 0; border-radius: 2px; background: var(--border-strong); }
 		.tabs { margin-top: 6px; }
