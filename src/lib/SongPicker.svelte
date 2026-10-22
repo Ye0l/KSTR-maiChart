@@ -1,13 +1,10 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import {
-		difficultyColor, difficultyName, findSongs, isUtage, levelLabel, levelRank, slotOptions, sortKeys, versionName, versionRank,
+		difficultyColor, difficultyName, findSongs, genreHue, isUtage, levelLabel, levelRank, slotOptions, sortKeys, versionName, versionRank,
 		type Criteria, type Song
 	} from './catalog.ts';
-	import { asset } from '$app/paths';
-
-	// Covers are generated before dev/build, so their names are outside SvelteKit's static-asset type union.
-	const coverUrl = (cover: string, ext: 'webp' | 'jpg') => asset(`covers/${cover}.${ext}` as Parameters<typeof asset>[0]);
+	import Cover from './Cover.svelte';
 
 	let { songs, selected, open = $bindable(false), onpick }: {
 		songs: Song[]; selected: string; open: boolean; onpick: (difficulty?: string) => void;
@@ -77,8 +74,6 @@
 		}
 	});
 
-	// Stand-in jacket until thumbnails exist: a tint per genre and the title's first letter.
-	const hue = (genre: string) => [...genre].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 360;
 </script>
 
 <dialog bind:this={dialog} id="song-picker" class="picker" aria-labelledby="picker-title" onclose={() => open = false}>
@@ -140,12 +135,9 @@
 			{@const slots = song.levels.map(([slot]) => slot)}
 			<li>
 				<a href={`?chart=${encodeURIComponent(song.id)}`} aria-current={song.id === selected ? 'page' : undefined} onclick={() => { onpick(song.matches.at(-1)?.[0]); open = false; }}>
-					<span class="jacket" style:--hue={hue(song.genre)} aria-hidden="true">
+					<span class="jacket" style:--hue={genreHue(song.genre)} aria-hidden="true">
 						{#if song.cover}
-							<picture>
-								<source srcset={coverUrl(song.cover, 'webp')} type="image/webp" />
-								<img src={coverUrl(song.cover, 'jpg')} alt="" width="84" height="84" loading="lazy" decoding="async" />
-							</picture>
+							<Cover cover={song.cover} size={84} />
 						{:else}
 							{song.name.slice(0, 1)}
 						{/if}
@@ -206,8 +198,6 @@
 	.songs a[aria-current='page'] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
 	@media (hover: hover) { .songs a:hover { border-color: var(--border-strong); background: var(--surface-2); } }
 	.jacket { flex: none; display: grid; place-items: center; width: 84px; aspect-ratio: 1; overflow: hidden; border-radius: 8px; background: linear-gradient(135deg, hsl(var(--hue) 45% 32%), hsl(calc(var(--hue) + 40) 50% 18%)); color: #ffffffcc; font-size: 30px; font-weight: 800; }
-	.jacket picture { display: contents; }
-	.jacket img { width: 100%; height: 100%; object-fit: cover; }
 	.body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 	.song-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 600; }
 	.song-artist, .song-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-size: 12px; }

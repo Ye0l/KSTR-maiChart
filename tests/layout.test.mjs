@@ -11,7 +11,7 @@ import { markSimultaneous } from '../src/lib/presentation.ts';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-test('collapsible layout, mobile overlay, tabs and playback', { timeout: 45000 }, async () => {
+test('collapsible layout, mobile overlay, song picker and playback', { timeout: 45000 }, async () => {
 	const profile = await mkdtemp(join(tmpdir(), 'maichart-layout-'));
 	// The window must cover the emulated 1280x800 viewport: Chrome drops synthetic input outside the real window.
 	const browser = spawn(process.env.CHROMIUM ?? 'chromium', ['--headless', '--no-sandbox', '--disable-dev-shm-usage', '--remote-debugging-port=0', '--window-size=1280,800', '--autoplay-policy=no-user-gesture-required', `--user-data-dir=${profile}`, process.env.VIEWER_URL ?? 'http://localhost:5173/']);
@@ -80,10 +80,36 @@ test('collapsible layout, mobile overlay, tabs and playback', { timeout: 45000 }
 		await click('#pane-toggle');
 		assert.ok((await bounds('section')).width > expanded.width, 'desktop panel releases space');
 		await click('#pane-toggle');
-		await click('#tab-info');
-		assert.equal(await evaluate('document.querySelector("#panel-info").hidden'), false);
-		await evaluate('document.querySelector("#tab-info").dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }))');
-		assert.equal(await evaluate('document.activeElement.id'), 'tab-charts');
+		assert.equal(await evaluate('document.querySelectorAll("#side-pane .panel-content").length'), 1, 'charts and info share one panel');
+		assert.ok(await evaluate('!!document.querySelector("#side-pane .difficulties")'), 'difficulty chips live in the side panel');
+		assert.ok(await evaluate('!!document.querySelector("#side-pane .meta")'), 'metadata lives in the side panel');
+		assert.ok(await evaluate('!!document.querySelector("#side-pane .cover")'), 'the selected song shows a jacket');
+		assert.equal(await evaluate('document.querySelectorAll("footer .note-total b").length'), 2, 'the footer shows the overall number that has appeared and the fixed total');
+		assert.equal(await evaluate('document.querySelectorAll("footer .note-type").length'), 5, 'every note type is counted');
+		const noteCounts = () => evaluate('Array.from(document.querySelectorAll("footer .note-total b"), el => Number(el.textContent))');
+		const totalNotes = (await noteCounts())[1];
+		assert.ok(totalNotes > 0, 'the total note count is shown');
+		const typeTotals = await evaluate('Array.from(document.querySelectorAll("footer .note-type b"), el => Number(el.textContent))');
+		assert.equal(typeTotals.reduce((sum, value) => sum + value, 0), totalNotes, 'type totals add up to the overall total');
+		assert.equal(await evaluate('document.querySelectorAll("#side-pane [role=tab]").length'), 0, 'the panel no longer uses tabs');
+
+		const seekValue = () => evaluate('Number(document.querySelector(".seek").value)');
+		const playLabel = () => evaluate('document.querySelector(".play .sr-only").textContent');
+		const start = await seekValue();
+		await evaluate('window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))');
+		await sleep(50);
+		assert.ok((await seekValue()) > start, 'right arrow nudges the position forward');
+		await evaluate('window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }))');
+		await sleep(50);
+		assert.ok(Math.abs((await seekValue()) - start) < 0.001, 'left arrow nudges it back');
+		const beforePlay = await playLabel();
+		await evaluate('window.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }))');
+		await sleep(50);
+		assert.notEqual(await playLabel(), beforePlay, 'space toggles playback');
+		await evaluate('window.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }))');
+		await sleep(50);
+		assert.equal(await playLabel(), beforePlay, 'space toggles it back');
+		assert.equal((await noteCounts())[1], totalNotes, 'the total note count stays fixed');
 		const setValue = async (selector, value) => {
 			await evaluate(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); el.value = ${JSON.stringify(String(value))}; el.dispatchEvent(new Event(el.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true })); })()`);
 			await sleep(30);

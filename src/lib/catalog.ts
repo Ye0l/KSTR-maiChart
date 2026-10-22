@@ -9,6 +9,8 @@ export const isUtage = (id: string) => id.startsWith('宴会場/');
 export const difficultyName = (level: string, utage: boolean, levels: string[]) =>
 	utage ? (levels.length > 1 ? `UTAGE ${levels.indexOf(level) + 1}` : 'UTAGE') : difficultyNames[Number(level) - 1] ?? level;
 export const difficultyColor = (level: string, utage: boolean) => difficultyColors[utage ? 6 : Number(level) - 1];
+// Jacket placeholder tint: a stable hue per genre.
+export const genreHue = (genre: string) => [...genre].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 360;
 
 const versionOrder = ['', ' PLUS', ' GreeN', ' GreeN PLUS', ' ORANGE', ' ORANGE PLUS', ' PiNK', ' PiNK PLUS', ' MURASAKi', ' MURASAKi PLUS', ' MiLK', ' MiLK PLUS', ' FiNALE',
 	' DX', ' DX PLUS', ' DX Splash', ' DX Splash PLUS', ' DX UNiVERSE', ' DX UNiVERSE PLUS', ' DX FESTiVAL', ' DX FESTiVAL PLUS', ' DX BUDDiES', ' DX BUDDiES PLUS',
