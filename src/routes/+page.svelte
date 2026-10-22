@@ -555,7 +555,10 @@
 		--tap: 40px;
 	}
 	:global(html) { touch-action: pan-x pan-y; }
-	:global(body) { margin: 0; background: var(--bg); color: var(--text); font-family: 'Pretendard Variable', Pretendard, system-ui, -apple-system, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; }
+	/* The app fills the viewport and scrolls only inside its panels; locking the document stops iOS bounce,
+	   pull-to-refresh and the page drifting when the keyboard or address bar moves. */
+	:global(html), :global(body) { height: 100%; overflow: hidden; overscroll-behavior: none; }
+	:global(body) { position: fixed; inset: 0; margin: 0; background: var(--bg); color: var(--text); font-family: 'Pretendard Variable', Pretendard, system-ui, -apple-system, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; }
 	:global(*) { box-sizing: border-box; }
 	[hidden] { display: none !important; }
 	.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -586,7 +589,7 @@
 	.icon-button[aria-pressed='true'] { color: var(--accent); }
 
 	/* Shell */
-	main { height: 100dvh; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; }
+	main { height: 100dvh; padding-inline: env(safe-area-inset-left) env(safe-area-inset-right); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; }
 	nav { display: flex; align-items: center; gap: 8px 14px; min-height: 56px; padding: max(8px, env(safe-area-inset-top)) 14px 8px 8px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 92%, transparent); }
 	h1 { margin: 0; font-size: 19px; font-weight: 800; letter-spacing: -.02em; white-space: nowrap; }
 	.brand { background: linear-gradient(100deg, var(--pink), var(--accent)); -webkit-background-clip: text; background-clip: text; color: transparent; }

@@ -67,6 +67,10 @@ BASE_PATH=/KSTR-maiChart pnpm build       # Pages처럼 하위 경로에 올릴 
 1. 저장소 **Settings → Pages → Build and deployment → Source**를 **GitHub Actions**로 설정합니다.
 2. Actions 탭에서 **Deploy to GitHub Pages**를 실행하거나 `gh workflow run pages.yml`을 실행합니다.
 
+### PWA
+
+홈 화면에 설치할 수 있습니다(`static/manifest.webmanifest`, 아이콘은 `static/icons/`). 서비스 워커(`src/service-worker.ts`)가 앱 화면·코드·곡 카탈로그를 설치 때 받아 두고, 차트는 처음 열 때 저장해 이후 오프라인에서도 열립니다. 캐시는 빌드 버전별로 나뉘며, 새 버전은 열려 있는 앱을 모두 닫은 뒤 다음 실행부터 적용됩니다.
+
 ## 범위와 한계
 
 - `maidata.txt`의 메타데이터와 난이도별 노트를 읽습니다. BPM·박자 분할 변경, 길이, SLIDE 대기시간을 해석합니다.
@@ -88,6 +92,12 @@ pnpm build
 Chromium을 설치하고 개발 서버(또는 빌드 결과를 정적 서버로 띄운 주소)를 연 뒤 `node --test tests/layout.test.mjs`로 패널 토글·뷰 전환·노트 이동·공통 색상·배속 저장·탭 재생·드래그 탐색·모바일 레이아웃을 검사합니다.
 주소가 다르면 `VIEWER_URL=http://localhost:5174/ node --test tests/layout.test.mjs`처럼 지정합니다.
 전체 차트 검사는 원본 재생과의 일치 검사가 아닙니다.
+
+## 라이선스
+
+이 프로젝트의 소스 코드는 [GNU General Public License v3.0](LICENSE)(GPL-3.0-or-later)으로 배포합니다. SLIDE 퍼펙트 시점 비율(`src/lib/press.ts`)은 GPL-3.0인 [MajdataPlay](https://github.com/LingFeng-bbben/MajdataPlay)의 `SlideTables.cs` 값을 따릅니다.
+
+비상업 팬 도구입니다. maimai는 SEGA의 상표이며 이 프로젝트는 SEGA와 관계가 없습니다. 센서 윤곽은 공식 스킨을 보고 측정한 좌표입니다. 권리자의 요청이 있으면 해당 내용을 내립니다.
 
 ## 차트 데이터와 저작권
 
